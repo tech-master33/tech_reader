@@ -27,7 +27,8 @@ import comtypes.gen.UIAutomationClient as UIA
 
 import menu_manager
 import settings
-from focus_handler import FocusChangedHandler
+from focus_handler import (FocusChangedHandler, ValueChangedHandler,
+                           VALUE_PROP_ID, SELECTION_PROP_ID)
 from speech_manager import SpeechManager
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -68,6 +69,17 @@ def main():
     # Register event handler
     handler = FocusChangedHandler(uia, on_focus_changed)
     uia.AddFocusChangedEventHandler(None, handler)
+
+    # Announce Qt combo box selection changes (arrow keys without Alt+Down):
+    # Qt raises property-changed events, not focus events, for those.
+    value_handler = ValueChangedHandler(uia, speech_manager.speak)
+    try:
+        uia.AddPropertyChangedEventHandler(
+            None, UIA.TreeScope_Subtree, value_handler,
+            [VALUE_PROP_ID, SELECTION_PROP_ID])
+        print("Monitoring Qt value changes...")
+    except Exception as exc:
+        print(f"Value-change monitoring unavailable: {exc}")
 
     print("Monitoring focus events...")
 

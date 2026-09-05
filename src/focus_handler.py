@@ -71,6 +71,17 @@ QT_CONTAINER_TYPES = {
 
 QT_CLASS_PREFIXES = ("Q", "Qt5", "Qt6")
 
+# Property ids can be named UIA_ValueValuePropertyId or UIA_ValuePropertyId
+# depending on the comtypes typelib version; resolve once, here.
+try:
+    VALUE_PROP_ID = UIA.UIA_ValueValuePropertyId
+except AttributeError:
+    VALUE_PROP_ID = UIA.UIA_ValuePropertyId
+try:
+    SELECTION_PROP_ID = UIA.UIA_SelectionItemIsSelectedPropertyId
+except AttributeError:
+    SELECTION_PROP_ID = 30079  # UIA_SelectionItemIsSelectedPropertyId
+
 # Control types that commonly get their name from a separate QLabel in Qt
 LABELABLE_TYPES = {
     UIA.UIA_ButtonControlTypeId,
@@ -323,3 +334,118 @@ class FocusChangedHandler(COMObject):
             pass
 
         return states
+
+
+class ValueChangedHandler(COMObject):
+    """Speaks QComboBox selection changes made with the keyboard.
+
+    A Qt QComboBox changes its current item when Up/Down is pressed while it
+    has keyboard focus -- no need to open the popup with Alt+Down first -- and
+    Qt does not move input focus while doing so, so the focus-changed handler
+    never fires and the screen reader stays silent. Qt instead raises UIA
+    property-changed events: the combo's Value property for the whole-control
+    change, and the items' selection state while a popup list is open. This
+    handler announces those, so arrowing through the list reads each item.
+    """
+
+    _com_interfaces_ = [UIA.IUIAutomationPropertyChangedEventHandler]
+
+    # Qt widgets whose value changes with the keyboard and should be spoken
+    # (spin boxes, sliders, date/time edits). Edit boxes are deliberately
+    # absent -- typing there must not echo the whole text on every key.
+    _VALUED_QT_CLASSES = ("QComboBox", "QSpinBox", "QDoubleSpinBox",
+                          "QSlider", "QDateTimeEdit", "QDateEdit", "QTimeEdit")
+
+    def __init__(self, uia, callback):
+        super().__init__()
+        self.uia = uia
+        self.callback = callback
+        self._last_spoken = ""
+
+    def HandlePropertyChangedEvent(self, sender, property_id, new_value):
+        try:
+            if new_value is None:
+                return
+            element = sender.QueryInterface(UIA.IUIAutomationElement)
+            if property_id == VALUE_PROP_ID:
+                text = str(new_value).strip()
+                if text:
+                    self._announce_value_change(element, text)
+            elif property_id == SELECTION_PROP_ID:
+                if new_value is True or new_value == 1:
+                    self._announce_item_selected(element)
+        except Exception:
+            pass
+
+    def _announce_value_change(self, element, text):
+        # Whole-combo events arrive on the combo element itself. Only Qt
+        # combos need this path -- native ones move focus on arrows and are
+        # already announced by the focus handler.
+        try:
+            if element.CurrentControlType == UIA.UIA_ComboBoxControlTypeId:
+                if _is_qt_element(element):
+                    self._announce(text, element)
+                return
+        except Exception:
+            return
+        # Spinners/sliders/date edits also change value via keyboard while
+        # focused; announce those too (real Qt widgets only, not edits).
+        try:
+            class_name = element.CurrentClassName or ""
+        except Exception:
+            return
+        if any(token in class_name for token in self._VALUED_QT_CLASSES):
+            self._announce(text, element)
+
+    def _announce_item_selected(self, element):
+        # A popup item became selected while the list is open.
+        try:
+            text = (element.CurrentName or "").strip()
+        except Exception:
+            return
+        if text and _is_qt_element(element):
+            self._announce(text, element)
+
+    def _announce(self, text, element):
+        # Qt often raises both a value event and an item-selection event for
+        # the same change -- don't speak the same text twice in a row.
+        if not text or text == self._last_spoken:
+            return
+        try:
+            focused = element.CurrentHasKeyboardFocus
+        except Exception:
+            focused = False
+        # Only announce when the element is focused (arrows on the closed
+        # combo) or lives inside an open combo popup. This keeps list/tree
+        # selections elsewhere from being announced out of context.
+        if not focused and not self._inside_qt_combo(element):
+            return
+        self._last_spoken = text
+        self.callback(text)
+
+    def _inside_qt_combo(self, element):
+        """True when element hangs off a Qt combo box in the UIA tree."""
+        try:
+            walker = self.uia.RawViewWalker
+        except Exception:
+            return False
+        try:
+            current = walker.GetParentElement(element)
+        except Exception:
+            return False
+        depth = 0
+        while current is not None and depth < 8:
+            try:
+                if current.CurrentControlType == UIA.UIA_ComboBoxControlTypeId:
+                    return True
+                class_name = current.CurrentClassName or ""
+                if "QComboBox" in class_name:
+                    return True
+            except Exception:
+                pass
+            try:
+                current = walker.GetParentElement(current)
+            except Exception:
+                return False
+            depth += 1
+        return False
