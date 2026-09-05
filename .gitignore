@@ -1,0 +1,49 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Build output (PyInstaller) ---
+build/
+dist/
+*.manifest
+*.spec
+screenreader_portable.zip
+
+# --- Logs & runtime artifacts ---
+*.log
+screenreader.log
+missing_deps.txt
+debug.log
+runtime.log
+test_comtypes.log
+
+# --- Voice dictionaries / local data ---
+*.dic
+
+# --- Project backups (pre-refactor snapshots) ---
+backup_20260616_1353/
+backup_menu_20260616_1415/
+
+# --- Agent / tooling ---
+.freebuff/
+.battest/
+.battestB/
+.battestC/
+
+# --- Editors & OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,4 @@
+comtypes
+pywin32
+keyboard
+wxPython
