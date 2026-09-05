@@ -25,6 +25,7 @@ import wx
 from comtypes import client
 import comtypes.gen.UIAutomationClient as UIA
 
+import config
 import menu_manager
 import settings
 from focus_handler import (FocusChangedHandler, ValueChangedHandler,
@@ -46,6 +47,11 @@ def main():
     uia = client.CreateObject(UIA.CUIAutomation)
 
     speech_manager = SpeechManager()
+    # Restore voice, rate and volume saved in the Speech settings dialog.
+    try:
+        config.apply_saved_speech(speech_manager.driver)
+    except Exception:
+        pass
     menu_manager.init_menu(speech_callback=speech_manager.speak,
                            speech_manager=speech_manager)
 

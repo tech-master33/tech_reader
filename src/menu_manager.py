@@ -5,6 +5,7 @@ import threading
 import winsound
 import wx
 
+import config
 import settings
 
 app = None
@@ -346,8 +347,12 @@ def _open_toggle_dialog(title, options):
     panel.SetSizer(sizer)
     dlg.Fit()
     if dlg.ShowModal() == wx.ID_OK:
+        updates = {}
         for cb, attr in checks:
-            setattr(settings, attr, cb.GetValue())
+            value = cb.GetValue()
+            setattr(settings, attr, value)
+            updates[attr] = value
+        config.save(**updates)
         _speak("Settings applied")
     dlg.Destroy()
 
@@ -518,6 +523,10 @@ class SpeechSettingsDialog(wx.Dialog):
                 driver.set_voice(desc)
             driver.set_rate(self.rate_slider.GetValue())
             driver.set_volume(self.volume_slider.GetValue())
+            # Persist the applied values so they survive a restart.
+            config.save(voice=driver.get_voice(),
+                        rate=driver.get_rate(),
+                        volume=driver.get_volume())
         except Exception as e:
             print(f"Apply speech settings error: {e}")
 

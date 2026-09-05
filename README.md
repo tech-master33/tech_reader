@@ -26,6 +26,9 @@ through SAPI5, with extra handling for **Qt applications** and the
   - **Output settings / Object presentation** toggles (announce roles / states)
   - **Keyboard settings**, **View log**, **Restart**, **About**
 - **Interrupt speech** instantly with **Ctrl**.
+- **Persistent preferences** — the roles/states toggles, the menu hotkey and
+  the speech voice/rate/volume are saved to
+  `%APPDATA%\TechReader\techreader_config.json` and restored on the next start.
 - Runs from **Python 3.10 – 3.14** on Windows 10/11.
 
 ## Requirements
@@ -93,7 +96,8 @@ The **TechReader menu** contains:
 | `src/speech_manager.py` | Speech queue with a worker thread and cancel support |
 | `src/sapi5.py` / `src/synth_driver.py` | SAPI5 engine and the speech-driver interface |
 | `src/menu_manager.py` | wxPython menu, dialogs, speech viewer, restart |
-| `src/settings.py` | Runtime toggles (roles/states, menu hotkey) |
+| `src/settings.py` | Runtime toggles loaded from the saved config (roles/states, menu hotkey) |
+| `src/config.py` | Reads/writes the persistent JSON config under `%APPDATA%\TechReader` |
 | `src/start.wav`, `src/exit.wav` | Startup / exit sounds |
 | `src/test_uia.py`, `src/test_comtypes_uia.py` | Development diagnostics |
 | `run_screenreader.bat` | One-click launcher |
