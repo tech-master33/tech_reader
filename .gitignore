@@ -19,6 +19,7 @@ dist/
 *.manifest
 *.spec
 screenreader_portable.zip
+backup_*.zip
 
 # --- Logs & runtime artifacts ---
 *.log
