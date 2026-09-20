@@ -117,12 +117,12 @@ def _is_qt_element(el):
     return False
 
 
-def _find_focused_child(self, container):
+def _find_focused_child(uia, container):
     try:
-        walker = self.uia.RawViewWalker
+        walker = uia.RawViewWalker
     except Exception:
         try:
-            walker = self.uia.GetRawViewWalker()
+            walker = uia.GetRawViewWalker()
         except Exception:
             return None
     if walker is None:
@@ -173,7 +173,7 @@ class FocusChangedHandler(COMObject):
             if is_qt:
                 # Qt workaround: containers may not expose focused child
                 if element_type in QT_CONTAINER_TYPES:
-                    focused_child = self._find_focused_child(element)
+                    focused_child = _find_focused_child(self.uia, element)
                     if focused_child:
                         element = focused_child
                         try:

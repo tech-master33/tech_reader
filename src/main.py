@@ -78,10 +78,15 @@ def main():
 
     # Announce Qt combo box selection changes (arrow keys without Alt+Down):
     # Qt raises property-changed events, not focus events, for those.
+    # This comtypes build's IUIAutomation.AddPropertyChangedEventHandler takes
+    # (element, scope, cacheRequest, handler, propertyArray); a NULL element
+    # is rejected (E_POINTER), so the subscription is rooted at the desktop
+    # root element and follows the whole tree from there.
     value_handler = ValueChangedHandler(uia, speech_manager.speak)
     try:
+        root_element = uia.GetRootElement()
         uia.AddPropertyChangedEventHandler(
-            None, UIA.TreeScope_Subtree, value_handler,
+            root_element, UIA.TreeScope_Subtree, None, value_handler,
             [VALUE_PROP_ID, SELECTION_PROP_ID])
         print("Monitoring Qt value changes...")
     except Exception as exc:
