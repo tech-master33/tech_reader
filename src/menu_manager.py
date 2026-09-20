@@ -106,6 +106,7 @@ def _show_main(speak=True):
             ("&Settings...", lambda e: _open_speech_settings()),
             ("&Voice settings...", lambda e: _open_speech_settings()),
             ("&Output settings...", lambda e: _open_output_settings()),
+            ("&Event announcements...", lambda e: _open_event_settings()),
             ("&Keyboard settings...", lambda e: _open_keyboard_settings()),
             ("&Object presentation...", lambda e: _open_object_presentation()),
             ("&Mouse settings...", lambda e: _open_info(
@@ -303,6 +304,20 @@ def _open_output_settings():
     _open_toggle_dialog("Output settings", [
         ("Announce element roles", "speak_roles"),
         ("Announce element states", "speak_states"),
+        ("Announce keyboard shortcuts", "speak_accelerators"),
+        ("Announce password protection", "speak_password_state"),
+        ("Announce position in list, x of y", "speak_position_in_set"),
+        ("Announce table row and column", "speak_table_positions"),
+        ("Announce help text", "speak_help_text"),
+    ])
+
+
+def _open_event_settings():
+    _open_toggle_dialog("Event announcements", [
+        ("Announce menus", "announce_menus"),
+        ("Announce tooltips", "announce_tooltips"),
+        ("Announce windows and dialogs", "announce_windows"),
+        ("Announce notifications", "announce_notifications"),
     ])
 
 

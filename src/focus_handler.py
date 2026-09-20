@@ -2,6 +2,7 @@ import comtypes
 from comtypes import COMObject
 import comtypes.gen.UIAutomationClient as UIA
 import settings
+import uia_core
 from qt_handler import (
     get_qt_label,
     get_qt_widget_description,
@@ -267,6 +268,14 @@ class FocusChangedHandler(COMObject):
                 generic_states = self._get_generic_states(el)
                 parts.extend(generic_states)
 
+            # Extended properties fetched in one cached round-trip:
+            # keyboard shortcut, password flag, position in set, help text.
+            self._add_extended_info(el, parts)
+
+            # Grid/table coordinates and headers ("row 2, column 3",
+            # "column Name") for data items via GridItem/TableItem.
+            self._add_table_position(el, parts)
+
             # Qt dialog description
             if is_qt and qt_class_name:
                 try:
@@ -286,6 +295,86 @@ class FocusChangedHandler(COMObject):
             return " ".join(parts)
         except Exception:
             return ""
+
+    # Extended property ids fetched together through one cache request.
+    _EXTENDED_PROP_IDS = (
+        UIA.UIA_AcceleratorKeyPropertyId,
+        UIA.UIA_IsPasswordPropertyId,
+        UIA.UIA_PositionInSetPropertyId,
+        UIA.UIA_SizeOfSetPropertyId,
+        UIA.UIA_HelpTextPropertyId,
+        UIA.UIA_FullDescriptionPropertyId,
+    )
+
+    def _add_extended_info(self, el, parts):
+        """Announce accelerators, password state, set position, help text.
+
+        Each part is individually enabled in Output settings and everything
+        is fetched in a single COM round-trip (uia_core.get_element_properties)
+        to keep focus announcements fast.
+        """
+        try:
+            props = uia_core.get_element_properties(el, self._EXTENDED_PROP_IDS)
+        except Exception:
+            return
+        if settings.speak_accelerators:
+            accelerator = str(props.get(UIA.UIA_AcceleratorKeyPropertyId) or "").strip()
+            if accelerator:
+                parts.append(accelerator)
+        if settings.speak_password_state and props.get(UIA.UIA_IsPasswordPropertyId):
+            parts.append("password protected")
+        if settings.speak_position_in_set:
+            try:
+                position = int(props.get(UIA.UIA_PositionInSetPropertyId) or 0)
+                size = int(props.get(UIA.UIA_SizeOfSetPropertyId) or 0)
+            except (TypeError, ValueError):
+                position = size = 0
+            if position > 0 and size >= position:
+                parts.append(f"{position} of {size}")
+        if settings.speak_help_text:
+            for text in (props.get(UIA.UIA_HelpTextPropertyId),
+                         props.get(UIA.UIA_FullDescriptionPropertyId)):
+                text = str(text or "").strip()
+                if text and text not in parts:
+                    parts.append(text)
+
+    def _add_table_position(self, el, parts):
+        """Announce grid coordinates and headers for items inside tables.
+
+        Uses the GridItem pattern for "row R, column C" and the TableItem
+        pattern for the item's column/row header names. Both patterns are
+        cheap for providers that implement them and simply absent for
+        everything else, so this stays silent outside real data grids.
+        """
+        if not settings.speak_table_positions:
+            return
+        try:
+            grid_item = el.GetCurrentPattern(UIA.UIA_GridItemPatternId).QueryInterface(
+                UIA.IUIAutomationGridItemPattern)
+            row = grid_item.CurrentRow
+            column = grid_item.CurrentColumn
+        except Exception:
+            return
+        try:
+            parts.append(f"row {row + 1}, column {column + 1}")
+        except Exception:
+            return
+        try:
+            table_item = el.GetCurrentPattern(UIA.UIA_TableItemPatternId).QueryInterface(
+                UIA.IUIAutomationTableItemPattern)
+            headers = table_item.GetCurrentColumnHeaderItems()
+            names = []
+            for i in range(headers.Length):
+                try:
+                    name = (headers.GetElement(i).CurrentName or "").strip()
+                except Exception:
+                    continue
+                if name and name not in names:
+                    names.append(name)
+            if names:
+                parts.append("column " + ", ".join(names[:3]))
+        except Exception:
+            pass
 
     def _get_generic_states(self, el):
         states = []

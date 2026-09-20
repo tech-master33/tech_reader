@@ -1,17 +1,18 @@
-import comtypes.client
 import comtypes.gen.UIAutomationClient as UIA
 import re
 import time
 
-_automation = None
+import uia_core
 
 
 def _get_automation():
-    """Lazily created CUIAutomation object used for tree walking."""
-    global _automation
-    if _automation is None:
-        _automation = comtypes.client.CreateObject(UIA.CUIAutomation)
-    return _automation
+    """The shared UIA automation object (see uia_core).
+
+    Sharing one connection means TechReader's timeout policy (2 s connect,
+    20 s transaction) also guards Qt tree walking -- previously a hung
+    provider could freeze the event thread for the 3-minute UIA default.
+    """
+    return uia_core.get_automation()
 
 
 def _get_raw_walker():

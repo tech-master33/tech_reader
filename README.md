@@ -100,7 +100,9 @@ The **TechReader menu** contains:
 | `src/native/` | C keyboard layer: `techreader_keyboard.dll` hook source, self-test, public header |
 | `scripts/build_native.bat` | Compiles the native keyboard DLL with gcc |
 | `src/diagnose_keyboard.py` | Prints live native keyboard events and detected commands |
-| `src/settings.py` | Runtime toggles loaded from the saved config (roles/states, menu hotkey) |
+| `src/uia_core.py` | Shared UIA core: one automation object, timeouts, cache-request reads |
+| `src/event_handler.py` | Event announcements: menus, tooltips, windows, notifications |
+| `src/settings.py` | Runtime toggles loaded from the saved config (roles/states, event announcements, menu hotkey) |
 | `src/config.py` | Reads/writes the persistent JSON config under `%APPDATA%\TechReader` |
 | `src/start.wav`, `src/exit.wav` | Startup / exit sounds |
 | `src/test_uia.py`, `src/test_comtypes_uia.py` | Development diagnostics |
@@ -133,6 +135,17 @@ Builds `src\native\techreader_keyboard.dll` (requires
 TechReader picks it up automatically on the next start. Without the DLL the
 app falls back to the python-keyboard implementation unchanged. See
 [docs/native_keyboard.md](docs/native_keyboard.md) for the architecture.
+
+## UIA core and event announcements
+
+All UI Automation goes through one shared object with 2s/20s connection/
+transaction timeouts (a hung app can no longer freeze the reader), cached
+multi-property reads for fast focus descriptions, and extra announcements:
+menus, tooltips, windows/dialogs, UIA notifications, keyboard accelerators,
+password state, position-in-set and grid row/column for data items. Every
+category is toggleable in the menu (Output settings / Event announcements).
+See [docs/uia_events.md](docs/uia_events.md) for the architecture, including
+the comtypes typelib quirks the code works around.
 
 ## How the speech pipeline works
 

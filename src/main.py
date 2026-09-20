@@ -22,13 +22,14 @@ for _stream in (sys.stdout, sys.stderr):
 import keyboard
 import pythoncom
 import wx
-from comtypes import client
 import comtypes.gen.UIAutomationClient as UIA
 
 import config
+import event_handler
 import menu_manager
 import native_keyboard
 import settings
+import uia_core
 from focus_handler import (FocusChangedHandler, ValueChangedHandler,
                            VALUE_PROP_ID, SELECTION_PROP_ID)
 from speech_manager import SpeechManager
@@ -44,8 +45,9 @@ def main():
         pass
     pythoncom.CoInitialize()
 
-    # Initialize UIA COM object
-    uia = client.CreateObject(UIA.CUIAutomation)
+    # Initialize UIA through the shared core (CUIAutomation8, sane timeouts,
+    # registration helpers that paper over this machine's comtypes quirks).
+    uia = uia_core.get_automation()
 
     speech_manager = SpeechManager()
     # Restore voice, rate and volume saved in the Speech settings dialog.
@@ -120,6 +122,17 @@ def main():
         print("Monitoring Qt value changes...")
     except Exception as exc:
         print(f"Value-change monitoring unavailable: {exc}")
+
+    # Menu, tooltip, window and notification announcements (each toggleable
+    # in the menu under Preferences -> Event announcements).
+    try:
+        registered = event_handler.register_events(speech_manager.speak)
+        if registered:
+            print("Event announcements active:", ", ".join(sorted(registered)))
+        else:
+            print("Event announcements: all disabled in settings.")
+    except Exception as exc:
+        print(f"Event announcements unavailable: {exc}")
 
     print("Monitoring focus events...")
 
