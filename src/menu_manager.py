@@ -86,6 +86,7 @@ def _show_sub(title, items):
     sizer.Add(btn_back, 0, wx.EXPAND | wx.ALL, 2)
     sizer.Layout()
     _menu_frame.SetTitle(f"TechReader - {title}")
+    _focus_first_item()
     _speak(title)
 
 
@@ -138,8 +139,11 @@ def _show_main(speak=True):
 
     sizer.Layout()
     _menu_frame.SetTitle("TechReader Menu")
-    if speak and _menu_frame.IsShown():
-        _speak("TechReader menu")
+    if _menu_frame.IsShown():
+        # Back navigation: put focus on the first item like a fresh open.
+        _focus_first_item()
+        if speak:
+            _speak("TechReader menu")
 
 
 def _build_menu():
@@ -169,6 +173,25 @@ def _focused_button_index(buttons):
         if btn.HasFocus():
             return i
     return None
+
+
+def _focus_first_item():
+    """Focus the first button of the current menu view.
+
+    A wx.Frame never receives keyboard focus itself, so focusing the frame
+    left the menu open but unfocused: nothing was announced and the first
+    Tab appeared to do nothing. Focusing a real button lets the normal UIA
+    focus pipeline announce it, exactly like Tab navigation. Safe to call
+    while the frame is hidden (the rebuild paths) -- the focus call simply
+    has no effect until the frame is shown.
+    """
+    buttons = _get_nav_buttons()
+    if not buttons:
+        return
+    try:
+        buttons[0].SetFocus()
+    except Exception:
+        pass
 
 
 def _move_menu_focus(step):
@@ -206,12 +229,12 @@ def _on_menu_key(event):
 def _close_menu_for_action():
     """Reset the menu to the main view and hide it silently (before actions).
 
-    The panel is rebuilt so reopening the menu shows the main menu, not the
-    stale submenu the action was launched from.
+    The frame is hidden first so the rebuild does not move focus or fire a
+    spurious item announcement while the action's dialog is opening.
     """
     if _menu_frame is not None:
-        _show_main(speak=False)
         _menu_frame.Hide()
+        _show_main(speak=False)
 
 
 def _hide_menu():
@@ -242,7 +265,9 @@ def show_menu():
         _show_main()
     _menu_frame.Show()
     _menu_frame.Raise()
-    _menu_frame.SetFocus()
+    # Focus the first item, not the frame: a frame never holds keyboard
+    # focus, so SetFocus() on it left the menu silently unfocused.
+    _focus_first_item()
     _speak("TechReader menu")
 
 

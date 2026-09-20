@@ -1,3 +1,5 @@
+import time
+
 import comtypes
 from comtypes import COMObject
 import comtypes.gen.UIAutomationClient as UIA
@@ -83,6 +85,11 @@ try:
 except AttributeError:
     SELECTION_PROP_ID = 30079  # UIA_SelectionItemIsSelectedPropertyId
 
+# Focus events with the same runtime id and text within this window are
+# treated as provider duplicates (Qt re-emits focus for some elements) and
+# not announced again.
+_FOCUS_REPEAT_WINDOW_S = 0.3
+
 # Control types that commonly get their name from a separate QLabel in Qt
 LABELABLE_TYPES = {
     UIA.UIA_ButtonControlTypeId,
@@ -157,6 +164,7 @@ class FocusChangedHandler(COMObject):
         self.uia = uia
         self.callback = callback
         self._last_focused = None
+        self._last_announcement = (None, "", 0.0)
 
     def HandleFocusChangedEvent(self, sender):
         try:
@@ -209,9 +217,30 @@ class FocusChangedHandler(COMObject):
                     pass
 
             if full_description:
+                if self._is_repeat(element, full_description):
+                    return
                 self.callback(full_description)
         except Exception:
             pass
+
+    def _is_repeat(self, element, description):
+        """True when the same element just produced the same description.
+
+        Some providers (notably Qt) emit the focus-changed event twice for
+        one focus change; announcing both makes everything sound doubled.
+        Compares the UIA runtime id, so two different items that happen to
+        describe identically still both get announced.
+        """
+        try:
+            runtime_id = tuple(element.GetRuntimeId())
+        except Exception:
+            runtime_id = None
+        now = time.monotonic()
+        last_id, last_text, last_time = self._last_announcement
+        self._last_announcement = (runtime_id, description, now)
+        return (runtime_id is not None and runtime_id == last_id
+                and description == last_text
+                and (now - last_time) < _FOCUS_REPEAT_WINDOW_S)
 
     def _get_element_desc(self, el, is_qt=False):
         try:
@@ -272,8 +301,8 @@ class FocusChangedHandler(COMObject):
             # keyboard shortcut, password flag, position in set, help text.
             self._add_extended_info(el, parts)
 
-            # Grid/table coordinates and headers ("row 2, column 3",
-            # "column Name") for data items via GridItem/TableItem.
+            # Grid coordinates for data items via GridItem/TableItem:
+            # "row 2" plus the column once (header name or index).
             self._add_table_position(el, parts)
 
             # Qt dialog description
@@ -339,12 +368,13 @@ class FocusChangedHandler(COMObject):
                     parts.append(text)
 
     def _add_table_position(self, el, parts):
-        """Announce grid coordinates and headers for items inside tables.
+        """Announce grid coordinates for items inside tables/grids.
 
-        Uses the GridItem pattern for "row R, column C" and the TableItem
-        pattern for the item's column/row header names. Both patterns are
-        cheap for providers that implement them and simply absent for
-        everything else, so this stays silent outside real data grids.
+        "row R" comes from the GridItem pattern. The column is spoken once:
+        the column header name via TableItem when the provider has one
+        ("column Name"), otherwise the 1-based index ("column 3"). Announcing
+        both forms made grid items sound like columns were announced twice.
+        Silent for everything that is not a grid item.
         """
         if not settings.speak_table_positions:
             return
@@ -356,25 +386,34 @@ class FocusChangedHandler(COMObject):
         except Exception:
             return
         try:
-            parts.append(f"row {row + 1}, column {column + 1}")
+            parts.append(f"row {row + 1}")
         except Exception:
             return
+        header = self._grid_column_header(el)
+        if header:
+            parts.append(f"column {header}")
+        else:
+            try:
+                parts.append(f"column {column + 1}")
+            except Exception:
+                pass
+
+    def _grid_column_header(self, el):
+        """The item's first named column header, or empty if unavailable."""
         try:
             table_item = el.GetCurrentPattern(UIA.UIA_TableItemPatternId).QueryInterface(
                 UIA.IUIAutomationTableItemPattern)
             headers = table_item.GetCurrentColumnHeaderItems()
-            names = []
             for i in range(headers.Length):
                 try:
                     name = (headers.GetElement(i).CurrentName or "").strip()
                 except Exception:
                     continue
-                if name and name not in names:
-                    names.append(name)
-            if names:
-                parts.append("column " + ", ".join(names[:3]))
+                if name:
+                    return name
         except Exception:
             pass
+        return ""
 
     def _get_generic_states(self, el):
         states = []

@@ -17,6 +17,7 @@ Noise control:
   emit (same text twice within a fraction of a second).
 """
 
+import os
 import time
 
 import comtypes
@@ -38,6 +39,21 @@ _DEDUPE_WINDOW = 0.4
 
 # Window class/name noise that must never be announced.
 _WINDOW_NOISE_NAMES = {"Default IME", "MSCTFIME UI", "MSO_WAVELINE"}
+
+
+def _is_own_process(element):
+    """True when the element belongs to TechReader itself.
+
+    TechReader's own menu frame, dialogs and the speech viewer already
+    announce themselves explicitly ("TechReader menu", dialog titles, focus
+    speech on the controls). The window announcer must stay silent for them:
+    they are not other applications' windows, and the extra window
+    announcement made the menu sound like a window instead of a menu.
+    """
+    try:
+        return element.CurrentProcessId == os.getpid()
+    except Exception:
+        return False
 
 
 def _should_speak(text, _state={"text": None, "time": 0.0}):
@@ -112,6 +128,8 @@ def announce_tooltip_opened(element):
 
 
 def announce_window_opened(element):
+    if _is_own_process(element):
+        return None
     name = _element_name(element)
     if not name or name in _WINDOW_NOISE_NAMES:
         return None
@@ -129,6 +147,8 @@ def announce_window_opened(element):
 
 
 def announce_window_closed(element):
+    if _is_own_process(element):
+        return None
     name = _element_name(element)
     if not name or name in _WINDOW_NOISE_NAMES:
         return None
