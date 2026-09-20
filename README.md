@@ -90,12 +90,16 @@ The **TechReader menu** contains:
 
 | Path | Description |
 | --- | --- |
-| `src/main.py` | Entry point: COM pump loop, hotkeys, console-safe logging |
+| `src/main.py` | Entry point: COM pump loop, keyboard layer selection, console-safe logging |
 | `src/focus_handler.py` | UIA focus-changed event handler → spoken descriptions |
 | `src/qt_handler.py` | Qt widget & TeamTalk descriptions, label lookup, value reading |
 | `src/speech_manager.py` | Speech queue with a worker thread and cancel support |
 | `src/sapi5.py` / `src/synth_driver.py` | SAPI5 engine and the speech-driver interface |
 | `src/menu_manager.py` | wxPython menu, dialogs, speech viewer, restart |
+| `src/native_keyboard.py` | Native keyboard bridge: DLL events → commands (Ctrl interrupt, CapsLock+Space) |
+| `src/native/` | C keyboard layer: `techreader_keyboard.dll` hook source, self-test, public header |
+| `scripts/build_native.bat` | Compiles the native keyboard DLL with gcc |
+| `src/diagnose_keyboard.py` | Prints live native keyboard events and detected commands |
 | `src/settings.py` | Runtime toggles loaded from the saved config (roles/states, menu hotkey) |
 | `src/config.py` | Reads/writes the persistent JSON config under `%APPDATA%\TechReader` |
 | `src/start.wav`, `src/exit.wav` | Startup / exit sounds |
@@ -110,6 +114,25 @@ pyinstaller --onefile --noconsole --name screenreader src\main.py
 ```
 
 The executable is written to `dist\screenreader.exe`.
+
+## Native keyboard layer (optional, recommended)
+
+TechReader can use a small compiled C component for keyboard handling
+instead of the `keyboard` Python package. It uses a Windows low-level
+keyboard hook and offers the same commands (`Ctrl` interrupt,
+`CapsLock+Space` menu) with lower overhead and explicit injected-key
+protection. Python still contains all command logic; the C layer only
+reports events.
+
+```bat
+scripts\build_native.bat
+```
+
+Builds `src\native\techreader_keyboard.dll` (requires
+[gcc / MinGW-w64](https://winlibs.com/) in `PATH`), runs its self-test, and
+TechReader picks it up automatically on the next start. Without the DLL the
+app falls back to the python-keyboard implementation unchanged. See
+[docs/native_keyboard.md](docs/native_keyboard.md) for the architecture.
 
 ## How the speech pipeline works
 
