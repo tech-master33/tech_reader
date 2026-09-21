@@ -101,9 +101,9 @@ grid item.
 
 ## Settings
 
-All toggles live in `settings.py`, persist via `config.py`, and appear in the
-TechReader menu: **Output settings** (focus description parts) and
-**Event announcements** (event toggles).
+All toggles live in `settings.py`, persist via `config.py`, and appear in
+TechReader's **Preferences → Settings…** dialog (Output and
+Event announcements categories).
 
 | Setting | Default | Controls |
 | --- | --- | --- |

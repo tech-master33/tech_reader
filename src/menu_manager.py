@@ -83,22 +83,7 @@ def _menu_definition():
     """(label, [(label, action), ...]) submenus of the TechReader menu."""
     return [
         ("&Preferences", [
-            ("&Settings...", lambda e: _open_speech_settings()),
-            ("&Voice settings...", lambda e: _open_speech_settings()),
-            ("&Output settings...", lambda e: _open_output_settings()),
-            ("&Event announcements...", lambda e: _open_event_settings()),
-            ("&Keyboard settings...", lambda e: _open_keyboard_settings()),
-            ("&Object presentation...", lambda e: _open_object_presentation()),
-            ("&Mouse settings...", lambda e: _open_info(
-                "Mouse settings", "Mouse settings are not implemented yet.")),
-            ("&Review settings...", lambda e: _open_info(
-                "Review settings", "Review settings are not implemented yet.")),
-            ("Presentation &settings...", lambda e: _open_info(
-                "Presentation settings", "Presentation settings are not implemented yet.")),
-            ("Browse &mode settings...", lambda e: _open_info(
-                "Browse mode settings", "Browse mode settings are not implemented yet.")),
-            ("&Advanced settings...", lambda e: _open_info(
-                "Advanced settings", "Advanced settings are not implemented yet.")),
+            ("&Settings...", lambda e: _open_settings()),
         ]),
         ("&Tools", [
             ("&View log", lambda e: _view_log()),
@@ -339,96 +324,8 @@ def _append_viewer_text(text):
 # Preferences dialogs
 # ---------------------------------------------------------------------------
 
-def _open_speech_settings():
-    dlg = SpeechSettingsDialog(_owner_frame, _speech_manager)
-    dlg.ShowModal()
-    dlg.Destroy()
-
-
-def _open_output_settings():
-    _open_toggle_dialog("Output settings", [
-        ("Announce element roles", "speak_roles"),
-        ("Announce element states", "speak_states"),
-        ("Announce keyboard shortcuts", "speak_accelerators"),
-        ("Announce password protection", "speak_password_state"),
-        ("Announce position in list, x of y", "speak_position_in_set"),
-        ("Announce table row and column", "speak_table_positions"),
-        ("Announce help text", "speak_help_text"),
-    ])
-
-
-def _open_event_settings():
-    _open_toggle_dialog("Event announcements", [
-        ("Announce menus", "announce_menus"),
-        ("Announce tooltips", "announce_tooltips"),
-        ("Announce windows and dialogs", "announce_windows"),
-        ("Announce notifications", "announce_notifications"),
-    ])
-
-
-def _open_object_presentation():
-    _open_toggle_dialog("Object presentation", [
-        ("Announce element roles", "speak_roles"),
-        ("Announce element states", "speak_states"),
-    ])
-
-
-def _open_keyboard_settings():
-    _open_toggle_dialog("Keyboard settings", [
-        ("CapsLock+Space opens the menu", "menu_hotkey_enabled"),
-    ])
-
-
-def _open_toggle_dialog(title, options):
-    _speak(title)
-    dlg = wx.Dialog(_owner_frame, title=title)
-    panel = wx.Panel(dlg)
-    sizer = wx.BoxSizer(wx.VERTICAL)
-    checks = []
-    for label, attr in options:
-        cb = wx.CheckBox(panel, label=label)
-        cb.SetValue(bool(getattr(settings, attr)))
-        cb.Bind(wx.EVT_CHECKBOX,
-                lambda e, c=cb: _speak("checked" if c.GetValue() else "unchecked"))
-        _bind_focus_speech(cb, label)
-        checks.append((cb, attr))
-        sizer.Add(cb, 0, wx.ALL, 6)
-    sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 6)
-    btn_ok = wx.Button(panel, wx.ID_OK, "&OK")
-    btn_cancel = wx.Button(panel, wx.ID_CANCEL, "&Cancel")
-    _bind_focus_speech(btn_ok, "OK")
-    _bind_focus_speech(btn_cancel, "Cancel")
-    btn_ok.Bind(wx.EVT_BUTTON, lambda e: dlg.EndModal(wx.ID_OK))
-    btn_cancel.Bind(wx.EVT_BUTTON, lambda e: dlg.EndModal(wx.ID_CANCEL))
-    row = wx.BoxSizer(wx.HORIZONTAL)
-    row.Add(btn_ok, 0, wx.RIGHT, 8)
-    row.Add(btn_cancel)
-    sizer.Add(row, 0, wx.ALIGN_CENTER | wx.ALL, 6)
-    panel.SetSizer(sizer)
-    dlg.Fit()
-    if dlg.ShowModal() == wx.ID_OK:
-        updates = {}
-        for cb, attr in checks:
-            value = cb.GetValue()
-            setattr(settings, attr, value)
-            updates[attr] = value
-        config.save(**updates)
-        _speak("Settings applied")
-    dlg.Destroy()
-
-
-def _open_info(title, description):
-    _speak(title)
-    dlg = wx.Dialog(_owner_frame, title=title)
-    panel = wx.Panel(dlg)
-    sizer = wx.BoxSizer(wx.VERTICAL)
-    sizer.Add(wx.StaticText(panel, label=description), 0, wx.ALL, 8)
-    btn_ok = wx.Button(panel, wx.ID_OK, "&OK")
-    _bind_focus_speech(btn_ok, "OK")
-    btn_ok.Bind(wx.EVT_BUTTON, lambda e: dlg.EndModal(wx.ID_OK))
-    sizer.Add(btn_ok, 0, wx.ALIGN_CENTER | wx.ALL, 8)
-    panel.SetSizer(sizer)
-    dlg.Fit()
+def _open_settings():
+    dlg = SettingsDialog(_owner_frame, _speech_manager)
     dlg.ShowModal()
     dlg.Destroy()
 
@@ -491,16 +388,98 @@ def _restart():
     threading.Timer(0.6, lambda: os._exit(0)).start()
 
 
-class SpeechSettingsDialog(wx.Dialog):
+class SettingsDialog(wx.Dialog):
+    """NVDA-style settings: one dialog, category list on the left, the
+    selected category's options on the right.
+
+    Categories exist only for settings TechReader actually has: Speech,
+    Output (focus-description parts), Event announcements, and Keyboard.
+    All panels are built once and shown/hidden on switch, so edits made
+    in one category survive browsing to another. OK and Apply write every
+    category at once; Cancel discards.
+    """
+
     def __init__(self, parent, speech_manager):
-        super().__init__(parent, title="Speech settings")
+        super().__init__(parent, title="TechReader Settings",
+                         size=(620, 420))
         self.speech_manager = speech_manager
-        driver = getattr(speech_manager, "driver", None) if speech_manager else None
+        _speak("TechReader settings")
 
-        panel = wx.Panel(self)
+        root = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Category list (left)
+        self.cat_list = wx.ListBox(self, choices=["Speech", "Output",
+                                                  "Event announcements",
+                                                  "Keyboard"])
+        self.cat_list.SetSelection(0)
+        self.cat_list.Bind(wx.EVT_LISTBOX, self._on_category)
+        self.cat_list.Bind(wx.EVT_SET_FOCUS,
+                           lambda e: _speak(self.cat_list.GetStringSelection()))
+        root.Add(self.cat_list, 0, wx.EXPAND | wx.ALL, 6)
+
+        # Panel stack (right)
+        self.panel_area = wx.Panel(self)
+        area_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.panel_area.SetSizer(area_sizer)
+        self.panels = {}
+        for name, builder in (("Speech", self._make_speech_panel),
+                              ("Output", self._make_output_panel),
+                              ("Event announcements", self._make_events_panel),
+                              ("Keyboard", self._make_keyboard_panel)):
+            panel = builder(self.panel_area)
+            panel.Hide()
+            area_sizer.Add(panel, 1, wx.EXPAND | wx.ALL, 4)
+            self.panels[name] = panel
+
+        # Buttons
+        btn_ok = wx.Button(self, wx.ID_OK, "&OK")
+        btn_cancel = wx.Button(self, wx.ID_CANCEL, "&Cancel")
+        btn_apply = wx.Button(self, wx.ID_APPLY, "&Apply")
+        _bind_focus_speech(btn_ok, "OK")
+        _bind_focus_speech(btn_cancel, "Cancel")
+        _bind_focus_speech(btn_apply, "Apply")
+        btn_ok.Bind(wx.EVT_BUTTON, lambda e: (self._apply(), self.EndModal(wx.ID_OK)))
+        btn_cancel.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
+        btn_apply.Bind(wx.EVT_BUTTON, lambda e: self._apply())
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        btn_row.Add(btn_ok, 0, wx.RIGHT, 6)
+        btn_row.Add(btn_cancel, 0, wx.RIGHT, 6)
+        btn_row.Add(btn_apply)
+
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(root, 1, wx.EXPAND)
+        outer.Add(wx.StaticLine(self), 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+        outer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.ALL, 6)
+        self.SetSizer(outer)
+
+        self._show_category("Speech")
+        self.CentreOnParent()
+        self.cat_list.SetFocus()
+
+    # -- category switching ------------------------------------------
+
+    def _show_category(self, name):
+        for key, panel in self.panels.items():
+            if key == name:
+                panel.Show()
+            else:
+                panel.Hide()
+        self.panel_area.Layout()
+        self.Layout()
+
+    def _on_category(self, event):
+        name = event.GetString()
+        self._show_category(name)
+        _speak(name)
+        event.Skip()
+
+    # -- panel builders ----------------------------------------------
+
+    def _make_speech_panel(self, parent):
+        panel = wx.Panel(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
+        driver = getattr(self.speech_manager, "driver", None) if self.speech_manager else None
 
-        # Voice
         row_voice = wx.BoxSizer(wx.HORIZONTAL)
         lbl_voice = wx.StaticText(panel, label="&Voice:")
         self.voice_combo = wx.ComboBox(panel, style=wx.CB_READONLY)
@@ -527,7 +506,6 @@ class SpeechSettingsDialog(wx.Dialog):
         row_voice.Add(self.voice_combo, 1, wx.ALL, 6)
         sizer.Add(row_voice, 0, wx.EXPAND)
 
-        # Rate (-10 .. 10)
         sizer.Add(wx.StaticText(panel, label="&Rate:"), 0, wx.ALL, 6)
         self.rate_slider = wx.Slider(panel, minValue=-10, maxValue=10)
         try:
@@ -539,7 +517,6 @@ class SpeechSettingsDialog(wx.Dialog):
         _bind_focus_speech(self.rate_slider, "Rate slider")
         sizer.Add(self.rate_slider, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
 
-        # Volume (0 .. 100)
         sizer.Add(wx.StaticText(panel, label="&Volume:"), 0, wx.ALL, 6)
         self.volume_slider = wx.Slider(panel, minValue=0, maxValue=100)
         try:
@@ -551,44 +528,90 @@ class SpeechSettingsDialog(wx.Dialog):
         _bind_focus_speech(self.volume_slider, "Volume slider")
         sizer.Add(self.volume_slider, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
 
-        # Buttons
-        sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 6)
         btn_test = wx.Button(panel, label="&Test voice")
-        btn_ok = wx.Button(panel, wx.ID_OK, "&OK")
-        btn_cancel = wx.Button(panel, wx.ID_CANCEL, "&Cancel")
         _bind_focus_speech(btn_test, "Test voice")
-        _bind_focus_speech(btn_ok, "OK")
-        _bind_focus_speech(btn_cancel, "Cancel")
         btn_test.Bind(wx.EVT_BUTTON, self._on_test)
-        btn_ok.Bind(wx.EVT_BUTTON, lambda e: (self._apply(), self.EndModal(wx.ID_OK)))
-        btn_cancel.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        row.Add(btn_test, 0, wx.RIGHT, 8)
-        row.Add(btn_ok, 0, wx.RIGHT, 8)
-        row.Add(btn_cancel)
-        sizer.Add(row, 0, wx.ALIGN_CENTER | wx.ALL, 6)
+        sizer.Add(btn_test, 0, wx.ALIGN_CENTER | wx.ALL, 6)
 
         panel.SetSizer(sizer)
-        sizer.Fit(self)
-        self.CentreOnParent()
-        _speak("Speech settings dialog")
+        return panel
+
+    def _make_output_panel(self, parent):
+        panel = wx.Panel(parent)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        for label, attr in [
+            ("Announce element roles", "speak_roles"),
+            ("Announce element states", "speak_states"),
+            ("Announce keyboard shortcuts", "speak_accelerators"),
+            ("Announce password protection", "speak_password_state"),
+            ("Announce position in list, x of y", "speak_position_in_set"),
+            ("Announce table row and column", "speak_table_positions"),
+            ("Announce help text", "speak_help_text"),
+        ]:
+            sizer.Add(self._make_check(panel, label, attr), 0, wx.ALL, 6)
+        panel.SetSizer(sizer)
+        return panel
+
+    def _make_events_panel(self, parent):
+        panel = wx.Panel(parent)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        for label, attr in [
+            ("Announce menus", "announce_menus"),
+            ("Announce tooltips", "announce_tooltips"),
+            ("Announce windows and dialogs", "announce_windows"),
+            ("Announce notifications", "announce_notifications"),
+        ]:
+            sizer.Add(self._make_check(panel, label, attr), 0, wx.ALL, 6)
+        panel.SetSizer(sizer)
+        return panel
+
+    def _make_keyboard_panel(self, parent):
+        panel = wx.Panel(parent)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._make_check(panel,
+                                   "CapsLock+Space opens the menu",
+                                   "menu_hotkey_enabled"), 0, wx.ALL, 6)
+        panel.SetSizer(sizer)
+        return panel
+
+    def _make_check(self, panel, label, attr):
+        cb = wx.CheckBox(panel, label=label)
+        cb._trk_attr = attr  # read back in _apply()
+        cb.SetValue(bool(getattr(settings, attr)))
+        cb.Bind(wx.EVT_CHECKBOX,
+                lambda e, c=cb: _speak("checked" if c.GetValue() else "unchecked"))
+        _bind_focus_speech(cb, label)
+        return cb
+
+    # -- applying ------------------------------------------------------
 
     def _apply(self):
+        updates = {}
         driver = getattr(self.speech_manager, "driver", None) if self.speech_manager else None
-        if driver is None:
-            return
-        try:
-            desc = self.voice_combo.GetValue()
-            if desc:
-                driver.set_voice(desc)
-            driver.set_rate(self.rate_slider.GetValue())
-            driver.set_volume(self.volume_slider.GetValue())
-            # Persist the applied values so they survive a restart.
-            config.save(voice=driver.get_voice(),
-                        rate=driver.get_rate(),
-                        volume=driver.get_volume())
-        except Exception as e:
-            print(f"Apply speech settings error: {e}")
+        if driver is not None:
+            try:
+                desc = self.voice_combo.GetValue()
+                if desc:
+                    driver.set_voice(desc)
+                driver.set_rate(self.rate_slider.GetValue())
+                driver.set_volume(self.volume_slider.GetValue())
+                updates["voice"] = driver.get_voice()
+                updates["rate"] = driver.get_rate()
+                updates["volume"] = driver.get_volume()
+            except Exception as e:
+                print(f"Apply speech settings error: {e}")
+        for panel in self.panels.values():
+            for cb in panel.GetChildren():
+                if isinstance(cb, wx.CheckBox):
+                    # The label is the human text; map back via stored attr.
+                    attr = getattr(cb, "_trk_attr", None)
+                    if attr:
+                        value = cb.GetValue()
+                        setattr(settings, attr, value)
+                        updates[attr] = value
+        if updates:
+            config.save(**updates)
+        _speak("Settings applied")
 
     def _on_test(self, e):
         self._apply()

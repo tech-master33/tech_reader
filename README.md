@@ -22,9 +22,10 @@ through SAPI5, with extra handling for **Qt applications** and the
 - **TechReader menu** (NVDA-style) — open with `CapsLock+Space`:
   - navigate with the **arrow keys** and activate with **Enter**
   - **Speech viewer** window that shows every utterance in real time
-  - **Speech settings** dialog (SAPI5 voice, rate, volume, test)
-  - **Output settings / Object presentation** toggles (announce roles / states)
-  - **Keyboard settings**, **View log**, **Restart**, **About**
+  - **Settings** dialog in Preferences — one NVDA-style dialog with
+    categories (Speech, Output, Event announcements, Keyboard), voice,
+    rate, volume and every announcement toggle
+  - **View log**, **Restart**, **About**
 - **Interrupt speech** instantly with **Ctrl**.
 - **Persistent preferences** — the roles/states toggles, the menu hotkey and
   the speech voice/rate/volume are saved to
@@ -75,11 +76,14 @@ pythonw src\main.py
 
 The **TechReader menu** contains:
 
-- **Preferences**
-  - Settings… / Voice settings… — choose the SAPI5 voice, rate and volume
-  - Output settings… / Object presentation… — toggle whether element roles and
-    states are announced
-  - Keyboard settings… — enable/disable the `CapsLock+Space` menu hotkey
+- **Preferences → Settings…** — a single NVDA-style dialog: pick a category
+  (Speech, Output, Event announcements, Keyboard) on the left, change the
+  options on the right, then OK / Apply / Cancel
+  - Speech — SAPI5 voice, rate, volume, test
+  - Output — announce roles, states, shortcuts, passwords, position,
+    table row/column, help text
+  - Event announcements — menus, tooltips, windows/dialogs, notifications
+  - Keyboard — enable/disable the `CapsLock+Space` menu hotkey
 - **Tools**
   - Speech viewer — a window listing everything that is spoken
   - View log — opens `src/runtime.log` in a window
