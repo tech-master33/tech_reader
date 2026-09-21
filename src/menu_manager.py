@@ -614,6 +614,26 @@ class SettingsDialog(wx.Dialog):
         _speak("Settings applied")
 
     def _on_test(self, e):
-        self._apply()
-        if self.speech_manager is not None:
-            self.speech_manager.speak("Testing one two three")
+        # Preview with the controls' current values WITHOUT touching the
+        # live speech settings: render_to_wav uses a separate SAPI engine,
+        # so the voice you are using is not switched away from.
+        driver = getattr(self.speech_manager, "driver", None) if self.speech_manager else None
+        if driver is None or not hasattr(driver, "render_to_wav"):
+            _speak("Test voice is not available for this synthesizer")
+            return
+        phrase = "Testing one two three"
+        try:
+            path = driver.render_to_wav(
+                phrase,
+                voice_description=self.voice_combo.GetValue() or None,
+                rate=self.rate_slider.GetValue(),
+                volume=self.volume_slider.GetValue())
+        except Exception as exc:
+            print(f"Test voice error: {exc}")
+            path = None
+        if not path:
+            _speak("Test voice failed")
+            return
+        _speak(phrase)
+        import sapi5
+        sapi5.play_wav_file(path)
