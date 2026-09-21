@@ -9,10 +9,23 @@ import winsound
 #   focus callback printed *before* speaking);
 # - the default console encoding (cp1252) cannot print characters like
 #   emoji, which raised UnicodeEncodeError for TeamTalk chat messages.
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w")
-if sys.stderr is None:
-    sys.stderr = open(os.devnull, "w")
+if sys.stdout is None or sys.stderr is None:
+    if getattr(sys, "frozen", False):
+        # Packaged exe: keep the app's prints in a log next to the exe so
+        # problems on other machines can be diagnosed remotely.
+        try:
+            _log_dir = os.path.dirname(sys.executable)
+            _log_path = os.path.join(_log_dir, "screenreader.log")
+            _log = open(_log_path, "a", buffering=1, encoding="utf-8",
+                        errors="replace")
+            sys.stdout = sys.stdout or _log
+            sys.stderr = _log
+        except Exception:
+            pass
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w")
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")

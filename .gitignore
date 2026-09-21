@@ -17,7 +17,7 @@ ENV/
 build/
 dist/
 *.manifest
-*.spec
+!screenreader.spec
 *.dll
 *.exe
 screenreader_portable.zip

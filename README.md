@@ -116,10 +116,22 @@ The **TechReader menu** contains:
 
 ```bat
 python -m pip install pyinstaller
-pyinstaller --onefile --noconsole --name screenreader src\main.py
+python -m PyInstaller screenreader.spec --noconfirm --clean
 ```
 
-The executable is written to `dist\screenreader.exe`.
+The ready-to-send app is written to `dist\screenreader\` (about 70 MB with
+wxPython included; the build takes well under a minute). Zip that folder and
+send it — it contains the exe, the native keyboard DLL and the UI sounds.
+The `.zip` is `screenreader_portable.zip` if you build it with the helper
+snippet in the repo history. Keep the folder layout intact when unzipping.
+
+Notes:
+- `screenreader.spec` is tracked in git and bundles
+  `techreader_keyboard.dll` (into `_internal\native\`) plus `start.wav` /
+  `exit.wav` automatically.
+- A `screenreader.log` appears next to the exe while it runs — ask your
+  friend to send it back if something does not work.
+- No Python installation is needed on the target machine.
 
 ## Native keyboard layer (optional, recommended)
 
