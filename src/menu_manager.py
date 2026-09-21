@@ -1,7 +1,24 @@
+"""TechReader's menu: a real wx.Menu popup.
+
+The previous menu was a wx.Frame full of buttons, so to every other app
+(including TechReader's own UIA announcers) it looked and behaved like a
+window, not a menu. It is now a genuine popup wx.Menu with submenus:
+Windows handles arrow navigation, Enter activation and Escape dismissal.
+Because classic Win32 menus raise no UIA focus events, each highlighted
+item is announced through the native WM_MENUSELECT notification
+(EVT_MENU_HIGHLIGHT) instead.
+
+Selected actions run after the popup is dismissed (menus must not stay
+open while modal dialogs run). The dialog and speech-viewer
+infrastructure below the menu code is unchanged from the previous
+implementation.
+"""
+
 import os
 import subprocess
 import sys
 import threading
+import time
 import winsound
 import wx
 
@@ -11,8 +28,9 @@ import settings
 app = None
 _speech_callback = None
 _speech_manager = None
-_menu_frame = None
-_last_sub = None
+_owner_frame = None       # hidden frame that parents the popup menu and dialogs
+_menu = None              # the currently open wx.Menu, or None while it shows
+_last_closed_at = 0.0     # guard against a queued hotkey press reopening it
 _speech_viewer_frame = None
 _speech_viewer_text = None
 
@@ -31,28 +49,22 @@ def _speak(text):
 
 
 def init_menu(speech_callback=None, speech_manager=None):
-    global app, _menu_frame, _speech_manager
+    global app, _owner_frame, _speech_manager
     set_speech_callback(speech_callback)
     _speech_manager = speech_manager
     app = wx.App(False)
-    _build_menu()
-
-
-def _add_buttons(panel, sizer, items, on_navigate):
-    """Add buttons to the menu panel.
-
-    on_navigate is called before each button's handler runs; the main menu
-    passes a no-op while submenus hide the menu so item actions (dialogs,
-    restart, ...) are announced without the menu re-announcing itself.
-    """
-    for item in items:
-        if item is None:
-            sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 4)
-        else:
-            label, handler = item
-            btn = wx.Button(panel, label=label)
-            btn.Bind(wx.EVT_BUTTON, lambda e, h=handler: (on_navigate(), h(e)))
-            sizer.Add(btn, 0, wx.EXPAND | wx.ALL, 2)
+    # A wx.Menu needs a parent window; a never-shown frame is the standard
+    # parent. It is never displayed, so nothing ever announces it.
+    _owner_frame = wx.Frame(None, title="TechReader",
+                            style=wx.FRAME_NO_TASKBAR)
+    # Position the (hidden) frame at the screen centre so the popup menu
+    # opens there, like the old centred menu window did.
+    try:
+        scr = wx.GetClientDisplayRect()
+        _owner_frame.SetPosition((scr.x + scr.width // 2,
+                                  scr.y + scr.height // 2))
+    except Exception:
+        pass
 
 
 def _bind_focus_speech(ctrl, text):
@@ -67,43 +79,10 @@ def _bind_focus_speech(ctrl, text):
         pass
 
 
-def _clear_panel(panel):
-    for child in panel.GetChildren():
-        child.Destroy()
-    panel.GetSizer().Clear()
-
-
-def _show_sub(title, items):
-    global _last_sub
-    _last_sub = title
-    panel = _menu_frame.GetChildren()[0]
-    _clear_panel(panel)
-    sizer = panel.GetSizer()
-    _add_buttons(panel, sizer, items, _close_menu_for_action)
-    sizer.Add(wx.StaticLine(panel), 0, wx.EXPAND | wx.ALL, 4)
-    btn_back = wx.Button(panel, label="Back")
-    btn_back.Bind(wx.EVT_BUTTON, lambda e: _show_main())
-    sizer.Add(btn_back, 0, wx.EXPAND | wx.ALL, 2)
-    sizer.Layout()
-    _menu_frame.SetTitle(f"TechReader - {title}")
-    _focus_first_item()
-    _speak(title)
-
-
-def _show_main(speak=True):
-    global _last_sub
-    _last_sub = None
-    panel = _menu_frame.GetChildren()[0]
-    _clear_panel(panel)
-    sizer = panel.GetSizer()
-
-    def open_sub(title, items):
-        def handler(e):
-            _show_sub(title, items)
-        return handler
-
-    _add_buttons(panel, sizer, [
-        ("&Preferences", open_sub("Preferences", [
+def _menu_definition():
+    """(label, [(label, action), ...]) submenus of the TechReader menu."""
+    return [
+        ("&Preferences", [
             ("&Settings...", lambda e: _open_speech_settings()),
             ("&Voice settings...", lambda e: _open_speech_settings()),
             ("&Output settings...", lambda e: _open_output_settings()),
@@ -120,128 +99,85 @@ def _show_main(speak=True):
                 "Browse mode settings", "Browse mode settings are not implemented yet.")),
             ("&Advanced settings...", lambda e: _open_info(
                 "Advanced settings", "Advanced settings are not implemented yet.")),
-        ])),
-        ("&Tools", open_sub("Tools", [
+        ]),
+        ("&Tools", [
             ("&View log", lambda e: _view_log()),
             ("&Speech viewer", lambda e: _toggle_speech()),
             ("&Restart screen reader", lambda e: _restart()),
-        ])),
-        ("&Help", open_sub("Help", [
+        ]),
+        ("&Help", [
             ("&User guide", lambda e: _speak("Opening user guide")),
             ("Commands &quick reference", lambda e: _speak("Opening commands quick reference")),
             ("&What's new", lambda e: _speak("Opening what's new")),
             ("&About TechReader", lambda e: _about()),
-        ])),
-        None,
-        ("E&xit", lambda e: _do_exit()),
-        ("Close", lambda e: _hide_menu()),
-    ], lambda: None)
-
-    sizer.Layout()
-    _menu_frame.SetTitle("TechReader Menu")
-    if _menu_frame.IsShown():
-        # Back navigation: put focus on the first item like a fresh open.
-        _focus_first_item()
-        if speak:
-            _speak("TechReader menu")
+        ]),
+    ]
 
 
-def _build_menu():
-    global _menu_frame
-    _menu_frame = wx.Frame(None, title="TechReader Menu",
-                           style=wx.DEFAULT_FRAME_STYLE & ~(wx.MAXIMIZE_BOX | wx.MINIMIZE_BOX))
-    panel = wx.Panel(_menu_frame)
-    sizer = wx.BoxSizer(wx.VERTICAL)
-    panel.SetSizer(sizer)
-    _menu_frame.Bind(wx.EVT_CHAR_HOOK, _on_menu_key)
-    _show_main()
-    _menu_frame.Fit()
-    _menu_frame.Centre()
+class _MenuBuilder:
+    """Builds the wx.Menu tree, announces highlighted items, and remembers
+    the chosen action.
 
+    Item announcements: classic Win32 menus do not raise UIA focus-changed
+    events for item navigation, so arrowing through the menu would be
+    silent if we relied on the focus pipeline. The native notification for
+    keyboard navigation is WM_MENUSELECT, which wx delivers as
+    EVT_MENU_HIGHLIGHT; the highlighted item is announced through it.
 
-def _get_nav_buttons():
-    """Visible buttons of the current menu view, in on-screen order."""
-    if _menu_frame is None:
-        return []
-    panel = _menu_frame.GetChildren()[0]
-    return [c for c in panel.GetChildren()
-            if isinstance(c, wx.Button) and c.IsShown()]
-
-
-def _focused_button_index(buttons):
-    for i, btn in enumerate(buttons):
-        if btn.HasFocus():
-            return i
-    return None
-
-
-def _focus_first_item():
-    """Focus the first button of the current menu view.
-
-    A wx.Frame never receives keyboard focus itself, so focusing the frame
-    left the menu open but unfocused: nothing was announced and the first
-    Tab appeared to do nothing. Focusing a real button lets the normal UIA
-    focus pipeline announce it, exactly like Tab navigation. Safe to call
-    while the frame is hidden (the rebuild paths) -- the focus call simply
-    has no effect until the frame is shown.
+    Selected item actions do not run immediately: choosing an item closes
+    the menu, and the action runs once show_menu() regains control after
+    PopupMenu() returns. Dismissing without a selection (Escape or
+    clicking away) leaves pending_action None, so nothing runs.
     """
-    buttons = _get_nav_buttons()
-    if not buttons:
-        return
-    try:
-        buttons[0].SetFocus()
-    except Exception:
-        pass
+
+    def __init__(self):
+        self.pending_action = None
+        self.item_info = {}  # item id -> (label without mnemonic, is submenu)
+
+    def build(self):
+        menu = wx.Menu()
+        for label, items in _menu_definition():
+            sub = self._build_sub(items)
+            item = menu.AppendSubMenu(sub, label)
+            self._register(item, label, is_submenu=True)
+        menu.AppendSeparator()
+        self._bind_item(menu, menu.Append(wx.ID_EXIT, "E&xit\tCtrl+Q"),
+                        _do_exit)
+        self._bind_item(menu, menu.Append(wx.ID_ANY, "&Close menu"),
+                        _noop)
+        return menu
+
+    def _build_sub(self, items):
+        sub = wx.Menu()
+        for label, action in items:
+            item = sub.Append(wx.ID_ANY, label)
+            self._register(item, label, is_submenu=False)
+            self._bind_item(sub, item, action)
+        return sub
+
+    def _register(self, wx_item, label, is_submenu):
+        text = label.replace("&", "")
+        if is_submenu:
+            text += " submenu"
+        self.item_info[wx_item.GetId()] = (text, is_submenu)
+
+    def _bind_item(self, containing_menu, menu_item, action):
+        def handler(_event):
+            self.pending_action = action
+        containing_menu.Bind(wx.EVT_MENU, handler, menu_item)
+
+    def _on_highlight(self, event):
+        info = self.item_info.get(event.GetMenuId())
+        if info is not None:
+            _speak(info[0])
+        event.Skip()
 
 
-def _move_menu_focus(step):
-    """Move keyboard focus between menu buttons (wrapping).
-
-    Only focus is moved: the item is announced by the app's normal UIA
-    focus-changed pipeline, exactly as when navigating with Tab.
-    """
-    buttons = _get_nav_buttons()
-    if not buttons:
-        return
-    count = len(buttons)
-    current = _focused_button_index(buttons)
-    if current is None:
-        target = 0  # nothing focused yet: start at the top item
-    else:
-        target = (current + step) % count
-    buttons[target].SetFocus()
+def _noop(_event=None):
+    pass
 
 
-def _on_menu_key(event):
-    """Arrow keys navigate the menu; all other keys behave as usual.
-
-    Enter/Space keep activating the focused button and Tab keeps cycling
-    because those events are passed through with Skip().
-    """
-    code = event.GetKeyCode()
-    if code in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
-        step = -1 if code in (wx.WXK_UP, wx.WXK_LEFT) else 1
-        _move_menu_focus(step)
-        return  # consumed: the focus change itself announces the item
-    event.Skip()
-
-
-def _close_menu_for_action():
-    """Reset the menu to the main view and hide it silently (before actions).
-
-    The frame is hidden first so the rebuild does not move focus or fire a
-    spurious item announcement while the action's dialog is opening.
-    """
-    if _menu_frame is not None:
-        _menu_frame.Hide()
-        _show_main(speak=False)
-
-
-def _hide_menu():
-    _menu_frame.Hide()
-
-
-def _do_exit():
+def _do_exit(_event=None):
     _speak("Exiting TechReader")
     print("Exiting...")
     _play_sound("exit.wav")
@@ -256,19 +192,103 @@ def _play_sound(name):
 
 
 def show_menu():
-    if _menu_frame is None:
+    """Toggle the TechReader popup menu (the CapsLock+Space hotkey).
+
+    Escape or clicking away also closes it. Arrowing through the menu is
+    announced by the WM_MENUSELECT highlight handler; the menu itself is
+    announced here.
+    """
+    global _menu, _last_closed_at
+    if _owner_frame is None:
         return
-    if _menu_frame.IsShown():
-        _hide_menu()
+    if _menu is not None:
+        # The popup's native loop may or may not deliver queued hotkey
+        # events while it runs; dismiss either way.
+        hide_menu()
         return
-    if _last_sub is not None:
-        _show_main()
-    _menu_frame.Show()
-    _menu_frame.Raise()
-    # Focus the first item, not the frame: a frame never holds keyboard
-    # focus, so SetFocus() on it left the menu silently unfocused.
-    _focus_first_item()
+    if time.monotonic() - _last_closed_at < 0.2:
+        # Closed a fraction of a second ago: this press raced the close,
+        # so it is the "toggle off" half of a double press, not a reopen.
+        return
     _speak("TechReader menu")
+    builder = _MenuBuilder()
+    menu = builder.build()
+    _menu = menu
+    _make_owner_foreground()
+    # WM_MENUSELECT for a popup menu is delivered to the owner window, so
+    # item-highlight announcements must be bound on the owner frame (the
+    # menu object itself never sees them). Unbound after closing so that
+    # repeated opens do not stack duplicate handlers.
+    highlight = builder._on_highlight
+    _owner_frame.Bind(wx.EVT_MENU_HIGHLIGHT, highlight)
+    try:
+        try:
+            _owner_frame.PopupMenu(menu, (0, 0))
+        except Exception:
+            _owner_frame.PopupMenu(menu)
+    finally:
+        try:
+            _owner_frame.Unbind(wx.EVT_MENU_HIGHLIGHT, highlight)
+        except Exception:
+            pass
+    # PopupMenu blocks until the menu is dismissed.
+    _menu = None
+    _last_closed_at = time.monotonic()
+    menu.Destroy()
+    action, builder.pending_action = builder.pending_action, None
+    if action is not None:
+        action(None)
+
+
+def _make_owner_foreground():
+    """Bring the hidden owner window to the foreground before popping up.
+
+    Win32 ignores keyboard input for a popup menu whose owner is not the
+    foreground window (the menu opens but arrows/Escape do nothing until
+    it is clicked). TechReader may call SetForegroundWindow legitimately:
+    the CapsLock+Space keystroke arrives through this process's own
+    keyboard hook, so this is the process that received the last input.
+    """
+    try:
+        import ctypes
+        hwnd = _owner_frame.GetHandle()
+        if not hwnd:
+            return
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        fg = user32.GetForegroundWindow()
+        our_thread = kernel32.GetCurrentThreadId()
+        fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+        if fg and fg_thread and fg_thread != our_thread:
+            # Borrow the foreground thread's input queue so Windows permits
+            # the switch even when another app currently has focus.
+            user32.AttachThreadInput(our_thread, fg_thread, True)
+            try:
+                user32.SetForegroundWindow(hwnd)
+            finally:
+                user32.AttachThreadInput(our_thread, fg_thread, False)
+        else:
+            user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
+def hide_menu():
+    """Close the popup if it is open (the toggle-off half of the hotkey).
+
+    Escape dismisses one menu level at a time (an open submenu first), so
+    two are sent: a submenu closes, then the main menu. Extra Escapes with
+    no menu left are harmless.
+    """
+    if _menu is None:
+        return
+    try:
+        sim = wx.UIActionSimulator()
+        sim.Char(wx.WXK_ESCAPE)
+        time.sleep(0.12)
+        sim.Char(wx.WXK_ESCAPE)
+    except Exception:
+        pass
 
 
 def process_wx_events():
@@ -320,7 +340,7 @@ def _append_viewer_text(text):
 # ---------------------------------------------------------------------------
 
 def _open_speech_settings():
-    dlg = SpeechSettingsDialog(_menu_frame, _speech_manager)
+    dlg = SpeechSettingsDialog(_owner_frame, _speech_manager)
     dlg.ShowModal()
     dlg.Destroy()
 
@@ -361,7 +381,7 @@ def _open_keyboard_settings():
 
 def _open_toggle_dialog(title, options):
     _speak(title)
-    dlg = wx.Dialog(_menu_frame, title=title)
+    dlg = wx.Dialog(_owner_frame, title=title)
     panel = wx.Panel(dlg)
     sizer = wx.BoxSizer(wx.VERTICAL)
     checks = []
@@ -399,7 +419,7 @@ def _open_toggle_dialog(title, options):
 
 def _open_info(title, description):
     _speak(title)
-    dlg = wx.Dialog(_menu_frame, title=title)
+    dlg = wx.Dialog(_owner_frame, title=title)
     panel = wx.Panel(dlg)
     sizer = wx.BoxSizer(wx.VERTICAL)
     sizer.Add(wx.StaticText(panel, label=description), 0, wx.ALL, 8)
@@ -428,7 +448,7 @@ def _view_log():
     except Exception:
         text = "Unable to read log file"
     _speak("Log viewer")
-    dlg = wx.Dialog(_menu_frame, title="Screenreader log", size=(640, 420))
+    dlg = wx.Dialog(_owner_frame, title="Screenreader log", size=(640, 420))
     panel = wx.Panel(dlg)
     sizer = wx.BoxSizer(wx.VERTICAL)
     tc = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY, value=text)
@@ -445,7 +465,7 @@ def _view_log():
 def _about():
     _speak("About TechReader")
     dlg = wx.MessageDialog(
-        _menu_frame,
+        _owner_frame,
         "TechReader\n\nA screen reader for Windows with support for Qt and "
         "TeamTalk 5.\nPress Ctrl to interrupt speech.\nPress CapsLock+Space "
         "to open this menu.",

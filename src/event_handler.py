@@ -103,6 +103,10 @@ def _element_role(element):
 # ---------------------------------------------------------------------------
 
 def announce_menu_opened(element):
+    if _is_own_process(element):
+        # TechReader's own popup already announced itself in show_menu();
+        # its UIA open events must not double the announcement.
+        return None
     name = _element_name(element)
     try:
         control_type = element.CurrentControlType
@@ -118,7 +122,9 @@ def announce_menu_opened(element):
     return f"{name} menu"
 
 
-def announce_menu_closed(_element):
+def announce_menu_closed(element):
+    if _is_own_process(element):
+        return None
     return "menu closed"
 
 
@@ -136,7 +142,7 @@ def announce_window_opened(element):
     try:
         if name in _WINDOW_NOISE_NAMES or element.CurrentClassName in ("Ghost", "SysShadow"):
             return None
-        if element.CurrentIsOffscreen:
+        if element.CurrentIsOffscreen and uia_core.is_offscreen_confirmed(element):
             return None
         control_type = element.CurrentControlType
     except Exception:

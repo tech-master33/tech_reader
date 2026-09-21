@@ -127,6 +127,39 @@ def remove_notification_event_handler(handler, element=None):
         pass
 
 
+def is_offscreen_confirmed(element):
+    """True when the element is genuinely not visible on any screen.
+
+    Several providers report IsOffscreen=True for items that are plainly
+    visible (notably items inside Qt item views), so the flag alone cannot
+    be trusted. The flag is only believed when the bounding rectangle
+    agrees: an empty rectangle, or one that lies entirely outside the
+    virtual screen. A non-empty rectangle intersecting the virtual screen
+    means the element is rendered, whatever the flag claims.
+    """
+    try:
+        rect = element.CurrentBoundingRectangle
+        left, top = int(rect.left), int(rect.top)
+        right, bottom = int(rect.right), int(rect.bottom)
+    except Exception:
+        return True  # cannot verify; trust the provider's flag
+    if right <= left or bottom <= top:
+        return True  # zero size: nothing is rendered
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        vx = user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+        vy = user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+        vw = user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+        vh = user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+        if vw <= 0 or vh <= 0:
+            return True
+        return (right <= vx or left >= vx + vw
+                or bottom <= vy or top >= vy + vh)
+    except Exception:
+        return False  # have a real rect but no screen info: assume visible
+
+
 def get_element_properties(element, property_ids):
     """Fetch several properties in one COM round-trip via a cache request.
 

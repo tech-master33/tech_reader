@@ -425,7 +425,7 @@ class FocusChangedHandler(COMObject):
             pass
 
         try:
-            if el.CurrentIsOffscreen == True:
+            if el.CurrentIsOffscreen == True and uia_core.is_offscreen_confirmed(el):
                 states.append("offscreen")
         except Exception:
             pass
