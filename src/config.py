@@ -9,6 +9,7 @@ import os
 
 APP_NAME = "TechReader"
 CONFIG_FILE = "techreader_config.json"
+LOG_FILE = "screenreader.log"
 
 
 def _config_dir():
@@ -18,8 +19,23 @@ def _config_dir():
     return os.path.join(base, APP_NAME)
 
 
+def data_dir():
+    """Folder for all TechReader user files (config, log) — never the
+    program folder, so running from source or the exe stays clean."""
+    d = _config_dir()
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
 def config_path():
     return os.path.join(_config_dir(), CONFIG_FILE)
+
+
+def log_path():
+    return os.path.join(data_dir(), LOG_FILE)
 
 
 def load():

@@ -331,7 +331,7 @@ def _open_settings():
 
 
 def _view_log():
-    log_path = os.path.join(SRC_DIR, "runtime.log")
+    log_path = config.log_path()
     if not os.path.exists(log_path):
         _speak("No log file found")
         return

@@ -6,6 +6,9 @@
 #   techreader_keyboard.dll                   -> _internal/native/
 # comtypes.gen.UIAutomationClient is generated at runtime on dev machines,
 # so it is listed as a hidden import to guarantee it is frozen.
+#
+# The exe carries a VERSIONINFO resource (screenreader_version_info.txt)
+# and the TechReader icon (src/icon.ico, regenerable via tools/make_icon.py).
 
 a = Analysis(
     ['src\\main.py'],
@@ -16,6 +19,7 @@ a = Analysis(
     datas=[
         ('src\\start.wav', '.'),
         ('src\\exit.wav', '.'),
+        ('packaging\\README-RUN.txt', '.'),
     ],
     hiddenimports=[
         'comtypes',
@@ -54,6 +58,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='src\\icon.ico',
+    version='screenreader_version_info.txt',
 )
 
 coll = COLLECT(

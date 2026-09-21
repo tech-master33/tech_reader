@@ -50,12 +50,13 @@ if errorlevel 1 goto :installfailed
 echo Dependencies installed. Verifying...
 goto :checkdeps
 
-rem ----- all good: launch windowless and log to screenreader.log -----
+rem ----- all good: launch windowless; the log goes to %APPDATA%\TechReader -----
 :ready
 echo Using: %PYEXE%
 echo Starting TechReader...
-"%PYWEXE%" "%~dp0src\main.py" > "%~dp0screenreader.log" 2>&1
-echo Started. Output is written to screenreader.log.
+if not exist "%APPDATA%\TechReader" mkdir "%APPDATA%\TechReader"
+"%PYWEXE%" "%~dp0src\main.py" > "%APPDATA%\TechReader\screenreader.log" 2>&1
+echo Started. Output is written to %APPDATA%\TechReader\screenreader.log.
 rem small pause so the message is readable before the window closes
 ping -n 3 127.0.0.1 >nul
 exit /b 0

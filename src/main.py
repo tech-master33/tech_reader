@@ -11,13 +11,14 @@ import winsound
 #   emoji, which raised UnicodeEncodeError for TeamTalk chat messages.
 if sys.stdout is None or sys.stderr is None:
     if getattr(sys, "frozen", False):
-        # Packaged exe: keep the app's prints in a log next to the exe so
-        # problems on other machines can be diagnosed remotely.
+        # Packaged exe: keep the app's prints in a log under
+        # %APPDATA%\TechReader so problems on other machines can be
+        # diagnosed remotely without writing anything into the program
+        # folder.
         try:
-            _log_dir = os.path.dirname(sys.executable)
-            _log_path = os.path.join(_log_dir, "screenreader.log")
-            _log = open(_log_path, "a", buffering=1, encoding="utf-8",
-                        errors="replace")
+            import config as _config
+            _log = open(_config.log_path(), "a", buffering=1,
+                        encoding="utf-8", errors="replace")
             sys.stdout = sys.stdout or _log
             sys.stderr = _log
         except Exception:

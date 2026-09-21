@@ -53,7 +53,7 @@ The launcher:
 3. checks each dependency (`wxPython`, `comtypes`, `keyboard`, `pywin32`) and
    **asks whether to install** anything that's missing;
 4. starts the app windowless with `pythonw` and writes output to
-   `screenreader.log`.
+   `%APPDATA%\TechReader\screenreader.log`.
 
 To set up a virtual environment by hand:
 
@@ -86,7 +86,7 @@ The **TechReader menu** contains:
   - Keyboard — enable/disable the `CapsLock+Space` menu hotkey
 - **Tools**
   - Speech viewer — a window listing everything that is spoken
-  - View log — opens `src/runtime.log` in a window
+  - View log — opens `%APPDATA%\TechReader\screenreader.log` in a window
   - Restart screen reader
 - **Help** — About TechReader
 
@@ -120,17 +120,25 @@ python -m PyInstaller screenreader.spec --noconfirm --clean
 ```
 
 The ready-to-send app is written to `dist\screenreader\` (about 70 MB with
-wxPython included; the build takes well under a minute). Zip that folder and
-send it — it contains the exe, the native keyboard DLL and the UI sounds.
-The `.zip` is `screenreader_portable.zip` if you build it with the helper
-snippet in the repo history. Keep the folder layout intact when unzipping.
+wxPython included; the build takes well under a minute). Then run
+`python tools/package_zip.py` to create `screenreader_portable.zip` — it
+zips the dist folder, puts the run instructions next to the exe, and
+guarantees no `.log` / `.dic` junk gets in. Keep the folder layout
+intact when unzipping.
 
 Notes:
 - `screenreader.spec` is tracked in git and bundles
   `techreader_keyboard.dll` (into `_internal\native\`) plus `start.wav` /
   `exit.wav` automatically.
-- A `screenreader.log` appears next to the exe while it runs — ask your
-  friend to send it back if something does not work.
+- The exe carries Windows version info (`screenreader_version_info.txt` —
+  shows as "TechReader screen reader 0.1.0" in Explorer's Properties →
+  Details) and the TechReader icon (`src/icon.ico`). Bump both version
+  numbers there when cutting a new release.
+- Regenerate the icon after editing `tools/make_icon.py` with:
+  `python tools/make_icon.py`
+- The log is written to `%APPDATA%\TechReader\screenreader.log` (never
+  next to the exe), so the program folder stays clean — ask your friend
+  to send that file back if something does not work.
 - No Python installation is needed on the target machine.
 
 ## Native keyboard layer (optional, recommended)
