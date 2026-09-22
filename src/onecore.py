@@ -1,3 +1,11 @@
+"""Windows OneCore voices engine for TechReader.
+
+Windows 10/11 ships modern OneCore voices (the Settings > Time & language
+> Speech voices) that are separate from the classic SAPI 5 desktop voices.
+They are enumerated through SpObjectTokenCategory under the OneCore
+registry location and spoken through SAPI's SpVoice, which accepts those
+tokens on current Windows builds.
+"""
 import os
 import tempfile
 import threading
@@ -8,10 +16,31 @@ import pythoncom
 
 from synth_driver import SynthDriver, register_engine
 
+_ONECORE_VOICES_KEY = (r"HKEY_LOCAL_MACHINE"
+                       r"\SOFTWARE\Microsoft\Speech_OneCore\Voices")
+
+SAFT22kHz16BitMono = 22
+
+
+def _new_engine():
+    """Create an SpVoice COM object (COM must be initialized on the thread)."""
+    return comtypes.client.CreateObject("SAPI.SpVoice")
+
+
+def _list_onecore_tokens():
+    """Return the OneCore voice tokens, [] when the category is missing."""
+    try:
+        cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
+        cat.SetId(_ONECORE_VOICES_KEY, False)
+        tokens = cat.EnumerateTokens()
+        return [tokens.Item(i) for i in range(tokens.Count)]
+    except Exception:
+        return []
+
 
 @register_engine
-class Sapi5SynthDriver(SynthDriver):
-    name = "SAPI 5"
+class OneCoreSynthDriver(SynthDriver):
+    name = "Windows OneCore voices"
 
     def __init__(self):
         super().__init__()
@@ -21,16 +50,15 @@ class Sapi5SynthDriver(SynthDriver):
 
     @classmethod
     def is_supported(cls):
-        # Registry check, not a live COM probe: creating an SpVoice at
-        # selection time is unreliable on cold threads (voice-license
-        # machinery can make the first CreateObject fail), while the
-        # installed-voice registry keys are deterministic.
+        # Registry check (deterministic, no COM): at least one OneCore
+        # voice token installed.
         try:
             import winreg
             for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
                 try:
-                    with winreg.OpenKey(root, r"Software\Microsoft\Speech"
-                                              r"\Voices\Tokens") as key:
+                    with winreg.OpenKey(root, r"Software\Microsoft"
+                                              r"\Speech_OneCore\Voices"
+                                              r"\Tokens") as key:
                         if winreg.QueryInfoKey(key)[0] > 0:
                             return True
                 except OSError:
@@ -41,9 +69,9 @@ class Sapi5SynthDriver(SynthDriver):
 
     def _init_engine(self):
         try:
-            self.voice = comtypes.client.CreateObject("SAPI.SpVoice")
+            self.voice = _new_engine()
         except Exception as e:
-            print(f"Error initializing SAPI5: {e}")
+            print(f"Error initializing OneCore engine: {e}")
             self.voice = None
 
     def speak(self, text):
@@ -54,10 +82,9 @@ class Sapi5SynthDriver(SynthDriver):
                 return
             try:
                 # SVSFlagsAsync = 1, SVSFPurgeBeforeSpeak = 2
-                flags = 1 | 2
-                self.voice.Speak(text, flags)
+                self.voice.Speak(text, 1 | 2)
             except COMError as e:
-                print(f"SAPI5 Speak error: {e}")
+                print(f"OneCore Speak error: {e}")
                 self._init_engine()
 
     def stop(self):
@@ -65,10 +92,9 @@ class Sapi5SynthDriver(SynthDriver):
             if not self.voice:
                 return
             try:
-                # Purge pending speech
                 self.voice.Speak("", 2)
             except COMError as e:
-                print(f"SAPI5 Stop error: {e}")
+                print(f"OneCore Stop error: {e}")
                 self._init_engine()
 
     # ----- speech settings -----
@@ -78,10 +104,9 @@ class Sapi5SynthDriver(SynthDriver):
             if not self.voice:
                 return []
             try:
-                tokens = self.voice.GetVoices()
-                return [tokens.Item(i).GetDescription() for i in range(tokens.Count)]
+                return [t.GetDescription(0) for t in _list_onecore_tokens()]
             except COMError as e:
-                print(f"SAPI5 list voices error: {e}")
+                print(f"OneCore list voices error: {e}")
                 return []
 
     def get_voice(self):
@@ -89,9 +114,9 @@ class Sapi5SynthDriver(SynthDriver):
             if not self.voice:
                 return None
             try:
-                return self.voice.Voice.GetDescription()
+                return self.voice.Voice.GetDescription(0)
             except COMError as e:
-                print(f"SAPI5 get voice error: {e}")
+                print(f"OneCore get voice error: {e}")
                 return None
 
     def set_voice(self, description):
@@ -99,13 +124,12 @@ class Sapi5SynthDriver(SynthDriver):
             if not self.voice or not description:
                 return False
             try:
-                tokens = self.voice.GetVoices()
-                for i in range(tokens.Count):
-                    if tokens.Item(i).GetDescription() == description:
-                        self.voice.Voice = tokens.Item(i)
+                for t in _list_onecore_tokens():
+                    if t.GetDescription(0) == description:
+                        self.voice.Voice = t
                         return True
             except COMError as e:
-                print(f"SAPI5 set voice error: {e}")
+                print(f"OneCore set voice error: {e}")
             return False
 
     def get_rate(self):
@@ -115,7 +139,7 @@ class Sapi5SynthDriver(SynthDriver):
             try:
                 return int(self.voice.Rate)
             except COMError as e:
-                print(f"SAPI5 get rate error: {e}")
+                print(f"OneCore get rate error: {e}")
                 return 0
 
     def set_rate(self, rate):
@@ -125,7 +149,7 @@ class Sapi5SynthDriver(SynthDriver):
             try:
                 self.voice.Rate = max(-10, min(10, int(rate)))
             except COMError as e:
-                print(f"SAPI5 set rate error: {e}")
+                print(f"OneCore set rate error: {e}")
 
     def get_volume(self):
         with self._lock:
@@ -134,7 +158,7 @@ class Sapi5SynthDriver(SynthDriver):
             try:
                 return int(self.voice.Volume)
             except COMError as e:
-                print(f"SAPI5 get volume error: {e}")
+                print(f"OneCore get volume error: {e}")
                 return 100
 
     def set_volume(self, volume):
@@ -144,44 +168,36 @@ class Sapi5SynthDriver(SynthDriver):
             try:
                 self.voice.Volume = max(0, min(100, int(volume)))
             except COMError as e:
-                print(f"SAPI5 set volume error: {e}")
+                print(f"OneCore set volume error: {e}")
 
     # ----- offline helpers -----
 
     def render_to_wav(self, text, voice_description=None, rate=None,
                       volume=None, path=None):
-        """Render text to a WAV file using a separate SAPI engine.
-
-        The live engine (voice, rate, volume) is never touched, so a
-        preview cannot switch the current voice. An SpAudioFormat/SpFileStream
-        renders the audio to disk; a fresh SpVoice with the requested
-        settings speaks into that stream synchronously.
-
-        Returns the path of the written file, or None on failure.
-        """
+        """Render to a WAV file with a separate throwaway engine; the live
+        voice is never touched. OneCore tokens are assigned to the render
+        engine the same way as to the live engine."""
         if not text:
             return None
         engine = None
         stream = None
         try:
-            # SAPI is COM: this helper may be called from a non-main thread.
             pythoncom.CoInitialize()
             stream = comtypes.client.CreateObject("SAPI.SpFileStream")
             fmt = comtypes.client.CreateObject("SAPI.SpAudioFormat")
             fmt.Type = SAFT22kHz16BitMono
             stream.Format = fmt
             if path is None:
-                fd, path = tempfile.mkstemp(prefix="techreader_test_", suffix=".wav")
+                fd, path = tempfile.mkstemp(prefix="techreader_test_",
+                                            suffix=".wav")
                 os.close(fd)
             # Open's second parameter is the mode; 3 = create + overwrite.
-            # (This machine's comtypes wrapper exposes Open, not OpenStream.)
             stream.Open(path, 3)
-            engine = comtypes.client.CreateObject("SAPI.SpVoice")
+            engine = _new_engine()
             if voice_description:
-                tokens = engine.GetVoices()
-                for i in range(tokens.Count):
-                    if tokens.Item(i).GetDescription() == voice_description:
-                        engine.Voice = tokens.Item(i)
+                for t in _list_onecore_tokens():
+                    if t.GetDescription(0) == voice_description:
+                        engine.Voice = t
                         break
             if rate is not None:
                 engine.Rate = max(-10, min(10, int(rate)))
@@ -191,7 +207,7 @@ class Sapi5SynthDriver(SynthDriver):
             engine.Speak(text, 0)  # synchronous render into the stream
             return path
         except Exception as e:
-            print(f"SAPI5 render_to_wav error: {e}")
+            print(f"OneCore render_to_wav error: {e}")
             return None
         finally:
             for obj in (engine, stream):
@@ -201,29 +217,3 @@ class Sapi5SynthDriver(SynthDriver):
                 except Exception:
                     pass
             pythoncom.CoUninitialize()
-
-
-SAFT22kHz16BitMono = 22
-
-
-def play_wav_file(path):
-    """Play a WAV file on the default audio device without blocking.
-
-    Returns the thread so a caller can wait for playback if it wants to.
-    The file is deleted once playback finishes.
-    """
-    def _play():
-        try:
-            import winsound
-            winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_NODEFAULT)
-        except Exception as e:
-            print(f"WAV playback error: {e}")
-        finally:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-
-    t = threading.Thread(target=_play, daemon=True)
-    t.start()
-    return t

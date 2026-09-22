@@ -79,7 +79,9 @@ The **TechReader menu** contains:
 - **Preferences → Settings…** — a single NVDA-style dialog: pick a category
   (Speech, Output, Event announcements, Keyboard) on the left, change the
   options on the right, then OK / Apply / Cancel
-  - Speech — SAPI5 voice, rate, volume, test
+  - Speech — synthesizer engine (SAPI 5 / Windows OneCore voices /
+    No speech, NVDA-style), that engine's voice, rate, volume, test
+    (each engine remembers its own voice/rate/volume)
   - Output — announce roles, states, shortcuts, passwords, position,
     table row/column, help text
   - Event announcements — menus, tooltips, windows/dialogs, notifications
@@ -97,8 +99,8 @@ The **TechReader menu** contains:
 | `src/main.py` | Entry point: COM pump loop, keyboard layer selection, console-safe logging |
 | `src/focus_handler.py` | UIA focus-changed event handler → spoken descriptions |
 | `src/qt_handler.py` | Qt widget & TeamTalk descriptions, label lookup, value reading |
-| `src/speech_manager.py` | Speech queue with a worker thread and cancel support |
-| `src/sapi5.py` / `src/synth_driver.py` | SAPI5 engine and the speech-driver interface |
+| `src/speech_manager.py` | Speech queue with a worker thread, engine selection, and per-engine persisted settings |
+| `src/sapi5.py`, `src/onecore.py`, `src/null_synth.py` / `src/synth_driver.py` | Speech engines (SAPI 5, Windows OneCore voices, No speech) and the driver registry they register into |
 | `src/menu_manager.py` | wxPython menu, dialogs, speech viewer, restart |
 | `src/native_keyboard.py` | Native keyboard bridge: DLL events → commands (Ctrl interrupt, CapsLock+Space) |
 | `src/native/` | C keyboard layer: `techreader_keyboard.dll` hook source, self-test, public header |
@@ -183,7 +185,9 @@ focus_handler.py  ── builds a spoken description
 speech_manager.py ── worker thread queue (Ctrl cancels)
         │
         ▼
-sapi5.py          ── SAPI5 SpVoice (async, purge before speak)
+sapi5.py / onecore.py ── registered speech engines (driver registry in
+                     synth_driver.py; SpeechManager instantiates the
+                     selected one and persists per-engine settings)
 ```
 
 ## License

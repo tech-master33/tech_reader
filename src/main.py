@@ -64,11 +64,10 @@ def main():
     uia = uia_core.get_automation()
 
     speech_manager = SpeechManager()
-    # Restore voice, rate and volume saved in the Speech settings dialog.
-    try:
-        config.apply_saved_speech(speech_manager.driver)
-    except Exception:
-        pass
+    # The speech worker thread picks the configured engine (or the best
+    # available one) and applies that engine's saved voice/rate/volume.
+    # Speech needs to be ready before the menu or announcements use it.
+    speech_manager.wait_ready()
     menu_manager.init_menu(speech_callback=speech_manager.speak,
                            speech_manager=speech_manager)
 

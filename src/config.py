@@ -66,24 +66,3 @@ def save(**values):
     return True
 
 
-def _try(callable_, *args):
-    try:
-        return callable_(*args)
-    except Exception:
-        return None
-
-
-def apply_saved_speech(driver):
-    """Apply the saved voice / rate / volume to a speech driver, if any."""
-    data = load()
-    if driver is None:
-        return
-    voice = data.get("voice")
-    if voice:
-        _try(driver.set_voice, voice)
-    rate = data.get("rate")
-    if isinstance(rate, int):
-        _try(driver.set_rate, rate)
-    volume = data.get("volume")
-    if isinstance(volume, int):
-        _try(driver.set_volume, volume)

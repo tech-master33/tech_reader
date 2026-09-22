@@ -439,7 +439,7 @@ class SettingsDialog(wx.Dialog):
         _bind_focus_speech(btn_cancel, "Cancel")
         _bind_focus_speech(btn_apply, "Apply")
         btn_ok.Bind(wx.EVT_BUTTON, lambda e: (self._apply(), self.EndModal(wx.ID_OK)))
-        btn_cancel.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
+        btn_cancel.Bind(wx.EVT_BUTTON, self._on_cancel)
         btn_apply.Bind(wx.EVT_BUTTON, lambda e: self._apply())
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
         btn_row.Add(btn_ok, 0, wx.RIGHT, 6)
@@ -478,7 +478,27 @@ class SettingsDialog(wx.Dialog):
     def _make_speech_panel(self, parent):
         panel = wx.Panel(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        driver = getattr(self.speech_manager, "driver", None) if self.speech_manager else None
+        sm = self.speech_manager
+        driver = getattr(sm, "driver", None) if sm else None
+
+        # Synthesizer engine (NVDA-style): switching re-applies the chosen
+        # engine's saved settings and refreshes the voice list immediately.
+        row_engine = wx.BoxSizer(wx.HORIZONTAL)
+        lbl_engine = wx.StaticText(panel, label="&Synthesizer:")
+        self.engine_combo = wx.ComboBox(panel, style=wx.CB_READONLY)
+        engines = sm.available_engines() if sm else []
+        self.engine_combo.SetItems(engines)
+        current_engine = getattr(sm, "engine_name", None)
+        if current_engine in engines:
+            self.engine_combo.SetValue(current_engine)
+        elif engines:
+            self.engine_combo.SetValue(engines[0])
+        self.engine_combo.Bind(wx.EVT_COMBOBOX,
+                               lambda e: self._on_engine_changed())
+        _bind_focus_speech(self.engine_combo, "Synthesizer selection")
+        row_engine.Add(lbl_engine, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 6)
+        row_engine.Add(self.engine_combo, 1, wx.ALL, 6)
+        sizer.Add(row_engine, 0, wx.EXPAND)
 
         row_voice = wx.BoxSizer(wx.HORIZONTAL)
         lbl_voice = wx.StaticText(panel, label="&Voice:")
@@ -536,6 +556,42 @@ class SettingsDialog(wx.Dialog):
         panel.SetSizer(sizer)
         return panel
 
+    def _on_engine_changed(self):
+        """Switch the live engine (its saved settings are re-applied) and
+        refresh the voice/rate/volume controls to match it."""
+        name = self.engine_combo.GetValue()
+        sm = self.speech_manager
+        if sm is None or not name:
+            return
+        if not sm.switch_engine(name):
+            _speak(f"Could not switch to {name}")
+            return
+        _speak(name)
+        driver = getattr(sm, "driver", None)
+        voices = []
+        current = None
+        if driver is not None:
+            try:
+                voices = driver.list_voices() or []
+            except Exception:
+                voices = []
+            try:
+                current = driver.get_voice()
+            except Exception:
+                current = None
+        self.voice_combo.SetItems(voices)
+        if current in voices:
+            self.voice_combo.SetValue(current)
+        elif voices:
+            self.voice_combo.SetValue(voices[0])
+        else:
+            self.voice_combo.SetValue("")
+        try:
+            self.rate_slider.SetValue(driver.get_rate() if driver else 0)
+            self.volume_slider.SetValue(driver.get_volume() if driver else 100)
+        except Exception:
+            pass
+
     def _make_output_panel(self, parent):
         panel = wx.Panel(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -585,19 +641,33 @@ class SettingsDialog(wx.Dialog):
 
     # -- applying ------------------------------------------------------
 
+    def _on_cancel(self, event):
+        # The engine switches immediately when chosen in the combo, so a
+        # previewed switch is reverted to the configured engine on Cancel.
+        sm = self.speech_manager
+        if sm is not None:
+            configured = config.get("synth")
+            if configured and configured != sm.engine_name:
+                sm.switch_engine(configured)
+        self.EndModal(wx.ID_CANCEL)
+
     def _apply(self):
         updates = {}
-        driver = getattr(self.speech_manager, "driver", None) if self.speech_manager else None
-        if driver is not None:
+        sm = self.speech_manager
+        driver = getattr(sm, "driver", None) if sm else None
+        if sm is not None and driver is not None:
             try:
                 desc = self.voice_combo.GetValue()
                 if desc:
                     driver.set_voice(desc)
                 driver.set_rate(self.rate_slider.GetValue())
                 driver.set_volume(self.volume_slider.GetValue())
-                updates["voice"] = driver.get_voice()
-                updates["rate"] = driver.get_rate()
-                updates["volume"] = driver.get_volume()
+                # Per-engine settings (NVDA-style): each engine keeps its
+                # own voice/rate/volume under synth_<engine>_* keys, and
+                # "synth" records the selected engine.
+                sm.save_engine_settings(voice=driver.get_voice(),
+                                        rate=driver.get_rate(),
+                                        volume=driver.get_volume())
             except Exception as e:
                 print(f"Apply speech settings error: {e}")
         for panel in self.panels.values():
