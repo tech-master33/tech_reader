@@ -91,6 +91,7 @@ def _menu_definition():
             ("&View log", lambda e: _view_log()),
             ("&Speech viewer", lambda e: _toggle_speech()),
             ("&Restart screen reader", lambda e: _restart()),
+            ("&Report a problem", lambda e: _report_problem()),
         ]),
         ("&Help", [
             ("&User guide", lambda e: _speak("Opening user guide")),
@@ -387,6 +388,76 @@ def _append_viewer_text(text):
     if _speech_viewer_text is None:
         return
     _speech_viewer_text.AppendText(text + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Bug reporting
+# ---------------------------------------------------------------------------
+
+def _report_problem():
+    """Package the log, upload it keylessly, speak the link.
+
+    Fully keyboard/speech driven: a confirmation dialog names everything
+    the report contains, the upload runs on a worker thread (a slow or
+    dead network can never freeze the reader), and the resulting link is
+    spoken once, copied to the clipboard, and saved under
+    %APPDATA%\\TechReader as the offline fallback zip location.
+    """
+    import bug_report
+    _speak("Report a problem")
+    dlg = wx.MessageDialog(
+        _owner_frame,
+        "Upload an error report?\n\n"
+        "It contains: the TechReader log file, your Windows version, and "
+        "the TechReader version. No personal files are included.\n\n"
+        "The report is stored online for 7 days, then deleted. You get a "
+        "link to share.",
+        "Report a problem", wx.YES_NO | wx.ICON_INFORMATION)
+    choice = dlg.ShowModal()
+    dlg.Destroy()
+    if choice != wx.ID_YES:
+        _speak("Report cancelled")
+        return
+    _speak("Uploading report")
+
+    result = {}
+
+    def worker():
+        try:
+            text = bug_report.collect_report_text()
+            url = bug_report.upload_report_text(text)
+            result["url"] = url
+            result["zip"] = bug_report.make_report_zip()
+        except Exception as exc:
+            result["error"] = str(exc)
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    # wx.CallAfter-style completion: poll from a timer on the main thread
+    # so the dialog-free flow stays responsive and thread-safe.
+    def check():
+        if t.is_alive():
+            wx.CallLater(200, check)
+            return
+        url = result.get("url")
+        zip_path = result.get("zip")
+        if url:
+            _speak(f"Report uploaded. Link: {url}")
+            print(f"Bug report uploaded: {url}")
+            try:
+                if wx.TheClipboard.Open():
+                    wx.TheClipboard.SetData(
+                        wx.TextDataObject(url))
+                    wx.TheClipboard.Close()
+                    _speak("Link copied to clipboard")
+            except Exception:
+                pass
+        else:
+            _speak("Upload failed. The report zip is saved for you to attach.")
+            print(f"Bug report upload failed; zip at {zip_path}")
+        sys.stdout.flush()
+
+    check()
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [unreleased]
 
+### Added
+
+- Tools -> Report a problem: packages the log with system info, uploads it
+  keylessly (no account, auto-deleted after 7 days), and speaks the link
+  once and copies it to the clipboard. Runs off the main thread so a slow
+  network can never freeze the reader; if upload fails, a report zip is
+  saved under %APPDATA%\TechReader to attach instead.
+
 ### Fixed
 
 - The TechReader menu could freeze the whole reader on some machines: when

@@ -27,6 +27,7 @@ a = Analysis(
         'comtypes.gen.UIAutomationClient',
         'pythoncom',
         'keyboard',
+        'bug_report',
     ],
     hookspath=[],
     hooksconfig={},
