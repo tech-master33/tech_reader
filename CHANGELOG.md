@@ -5,7 +5,16 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [unreleased]
 
-Nothing yet.
+### Fixed
+
+- The TechReader menu could freeze the whole reader on some machines: when
+  the owner window could not be made foreground (remote sessions, elevated
+  apps, security software), the popup opened deaf to keyboard input with
+  the main thread blocked. The menu is now only opened when it can
+  actually receive keys -- otherwise the user hears "Cannot open menu
+  now". The foreground switch is also hang-proof: it never attaches the
+  input queue to a hung application and briefly shows the owner frame as
+  a last resort.
 
 ## [0.2.0-alpha.1] - 2026-09-23
 

@@ -30,6 +30,8 @@ _speech_callback = None
 _speech_manager = None
 _owner_frame = None       # hidden frame that parents the popup menu and dialogs
 _menu = None              # the currently open wx.Menu, or None while it shows
+_in_show_menu = False     # re-entrancy guard: inside the PopupMenu loop
+_owner_shown = False      # owner had to be shown to win the foreground race
 _last_closed_at = 0.0     # guard against a queued hotkey press reopening it
 _speech_viewer_frame = None
 _speech_viewer_text = None
@@ -182,44 +184,77 @@ def show_menu():
     Escape or clicking away also closes it. Arrowing through the menu is
     announced by the WM_MENUSELECT highlight handler; the menu itself is
     announced here.
+
+    Freeze safety: a Win32 popup menu whose owner window is not the
+    foreground window ignores all keyboard input -- on machines where the
+    foreground switch fails (remote sessions, elevated apps, security
+    software) that used to leave the menu open and deaf with the main
+    thread blocked, looking like a TechReader freeze. The menu is now
+    only opened when the owner really is foreground; otherwise the user
+    hears "Cannot open menu now" instead of being trapped.
     """
-    global _menu, _last_closed_at
+    global _menu, _last_closed_at, _in_show_menu, _owner_shown
     if _owner_frame is None:
         return
     if _menu is not None:
-        # The popup's native loop may or may not deliver queued hotkey
-        # events while it runs; dismiss either way.
+        # Re-entrant press (the hotkey arrives while the popup's own
+        # message loop is dispatching events): the toggle-off half.
         hide_menu()
+        return
+    if _in_show_menu:
         return
     if time.monotonic() - _last_closed_at < 0.2:
         # Closed a fraction of a second ago: this press raced the close,
         # so it is the "toggle off" half of a double press, not a reopen.
         return
+    if not _make_owner_foreground():
+        _speak("Cannot open menu now")
+        print("Menu: owner window did not become foreground; popup skipped")
+        sys.stdout.flush()
+        return
+    print("Menu: opening")
+    sys.stdout.flush()
     _speak("TechReader menu")
     builder = _MenuBuilder()
     menu = builder.build()
     _menu = menu
-    _make_owner_foreground()
     # WM_MENUSELECT for a popup menu is delivered to the owner window, so
     # item-highlight announcements must be bound on the owner frame (the
     # menu object itself never sees them). Unbound after closing so that
     # repeated opens do not stack duplicate handlers.
     highlight = builder._on_highlight
     _owner_frame.Bind(wx.EVT_MENU_HIGHLIGHT, highlight)
+    _in_show_menu = True
     try:
         try:
             _owner_frame.PopupMenu(menu, (0, 0))
         except Exception:
             _owner_frame.PopupMenu(menu)
     finally:
+        _in_show_menu = False
         try:
             _owner_frame.Unbind(wx.EVT_MENU_HIGHLIGHT, highlight)
         except Exception:
             pass
+        if _owner_shown:
+            # The owner was only made visible to win the foreground race.
+            _owner_shown = False
+            try:
+                _owner_frame.Hide()
+            except Exception:
+                pass
+        if _menu is menu:
+            # Identity check: a re-entrant toggle may already have run the
+            # close path; destroying twice is undefined behaviour.
+            _menu = None
+            _last_closed_at = time.monotonic()
+            try:
+                menu.Destroy()
+            except Exception:
+                pass
     # PopupMenu blocks until the menu is dismissed.
-    _menu = None
-    _last_closed_at = time.monotonic()
-    menu.Destroy()
+    print("Menu: closed")
+    sys.stdout.flush()
     action, builder.pending_action = builder.pending_action, None
     if action is not None:
         action(None)
@@ -233,29 +268,63 @@ def _make_owner_foreground():
     it is clicked). TechReader may call SetForegroundWindow legitimately:
     the CapsLock+Space keystroke arrives through this process's own
     keyboard hook, so this is the process that received the last input.
+
+    Returns True only when the owner window really is the foreground
+    window afterwards. Everything here is hang-proof: never attach to a
+    hung foreground thread (IsHungAppWindow), never wait longer than a
+    few retried milliseconds, and as a last resort show the owner window
+    (hidden windows cannot be foregrounded on some setups).
     """
+    global _owner_shown
     try:
         import ctypes
         hwnd = _owner_frame.GetHandle()
         if not hwnd:
-            return
+            return False
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
-        fg = user32.GetForegroundWindow()
         our_thread = kernel32.GetCurrentThreadId()
-        fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
-        if fg and fg_thread and fg_thread != our_thread:
-            # Borrow the foreground thread's input queue so Windows permits
-            # the switch even when another app currently has focus.
-            user32.AttachThreadInput(our_thread, fg_thread, True)
-            try:
+        for _attempt in range(3):
+            fg = user32.GetForegroundWindow()
+            fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+            if fg and fg_thread and fg_thread != our_thread:
+                try:
+                    if user32.IsHungAppWindow(fg):
+                        # AttachThreadInput would make this thread wait on
+                        # the hung one: the classic menu freeze.
+                        print("Menu: foreground window is hung; not attaching")
+                        sys.stdout.flush()
+                        return False
+                except Exception:
+                    pass  # IsHungAppWindow unavailable: proceed
+                # Borrow the foreground thread's input queue so Windows
+                # permits the switch even when another app has focus.
+                user32.AttachThreadInput(our_thread, fg_thread, True)
+                try:
+                    user32.SetForegroundWindow(hwnd)
+                finally:
+                    user32.AttachThreadInput(our_thread, fg_thread, False)
+            else:
                 user32.SetForegroundWindow(hwnd)
-            finally:
-                user32.AttachThreadInput(our_thread, fg_thread, False)
-        else:
-            user32.SetForegroundWindow(hwnd)
+            if user32.GetForegroundWindow() == hwnd:
+                return True
+            time.sleep(0.05)
+        # Some setups refuse to foreground a hidden window at all; a
+        # briefly visible owner frame wins the switch there.
+        _owner_frame.Show()
+        _owner_frame.Raise()
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.05)
+        if user32.GetForegroundWindow() == hwnd:
+            _owner_shown = True
+            return True
+        try:
+            _owner_frame.Hide()
+        except Exception:
+            pass
+        return False
     except Exception:
-        pass
+        return False
 
 
 def hide_menu():
