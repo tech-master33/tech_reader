@@ -5,6 +5,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [unreleased]
 
+Nothing yet.
+
+## [0.2.0-alpha.2] - 2026-09-23
+
+Second alpha. Same feature set as alpha.1 plus the fixes below.
+
 ### Added
 
 - Tools -> Report a problem: packages the log with system info, uploads it
@@ -85,6 +91,7 @@ First public release, shipped as a portable zip (`screenreader_portable.zip`).
   now a genuine menu control.
 - Silent event-handler failures that killed Qt combo-box announcements.
 
-[unreleased]: https://github.com/tech-master33/tech_reader/compare/0.2.0-alpha.1...HEAD
+[unreleased]: https://github.com/tech-master33/tech_reader/compare/0.2.0-alpha.2...HEAD
+[0.2.0-alpha.2]: https://github.com/tech-master33/tech_reader/compare/0.2.0-alpha.1...0.2.0-alpha.2
 [0.2.0-alpha.1]: https://github.com/tech-master33/tech_reader/compare/0.1.0...0.2.0-alpha.1
 [0.1.0]: https://github.com/tech-master33/tech_reader/releases/tag/0.1.0
