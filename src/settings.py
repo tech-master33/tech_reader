@@ -25,6 +25,12 @@ speak_help_text = bool(config.get("speak_help_text", False))
 # grids and tables (via the GridItem/TableItem patterns).
 speak_table_positions = bool(config.get("speak_table_positions", True))
 
+# Announce heading levels ("heading, level 2") for web/document content.
+speak_heading_levels = bool(config.get("speak_heading_levels", True))
+
+# Announce landmark regions ("main landmark", "navigation") for web content.
+speak_landmarks = bool(config.get("speak_landmarks", True))
+
 # --- Event announcements (registered at startup; see event_handler.py) ---
 
 # Announce menu open/close ("File menu", "menu closed").

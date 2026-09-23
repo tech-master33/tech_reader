@@ -603,6 +603,8 @@ class SettingsDialog(wx.Dialog):
             ("Announce position in list, x of y", "speak_position_in_set"),
             ("Announce table row and column", "speak_table_positions"),
             ("Announce help text", "speak_help_text"),
+            ("Announce heading levels", "speak_heading_levels"),
+            ("Announce landmarks", "speak_landmarks"),
         ]:
             sizer.Add(self._make_check(panel, label, attr), 0, wx.ALL, 6)
         panel.SetSizer(sizer)

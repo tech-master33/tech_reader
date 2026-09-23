@@ -9,6 +9,12 @@ Development version — nothing here has been released yet.
 
 ### Added
 
+- Web page support (Chromium browsers: Edge, Chrome, Electron and WebView2
+  apps): TechReader now wakes Chromium's sleeping accessibility tree itself
+  via the standard WM_GETOBJECT handshake when focus enters a web document
+  -- no browser settings or flags needed. Web announcements include heading
+  levels ("heading, level 2") and landmark regions ("main landmark"),
+  individually toggleable in Output settings.
 - Synthesizer engine system, NVDA-style: engines are pluggable drivers with a
   Synthesizer selector in Settings → Speech; switching is instant and Cancel
   reverts a previewed switch.

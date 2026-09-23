@@ -83,6 +83,29 @@ is enabled, returns labels for the startup log, and treats per-event failures
 as non-fatal. Live handlers are kept in `_active_handlers` so they stay alive
 while registered.
 
+## Web content (src/web_handler.py)
+
+Chromium builds its page accessibility tree lazily: without an assistive
+technology attached, the UIA document element has no children and TextPattern
+fails with CONNECT_E_NOCONNECTION. `web_handler.py` closes that gap:
+
+- Detection mirrors NVDA's signals: `FrameworkId == "Chrome"` (Edge, Chrome,
+  Electron, WebView2), with a renderer-window-class fallback for elements
+  that report no framework id.
+- Waking: on focus inside a web document, the owner top-level window is
+  found by walking raw-view parents (the document element itself has no
+  native window handle), and every `Chrome_RenderWidgetHostHWND` child gets
+  both WM_GETOBJECT handshakes -- the MSAA one (`AccessibleObjectFromWindow`
+  with OBJID_CLIENT) and the UIA one (`ElementFromHandle`). Poking all
+  renderers matters: a browser window hosts one per WebContents and the
+  visible tab is not necessarily the first.
+- Throttling: one wake per renderer window (5-minute re-poke window);
+  non-web elements return immediately, so focus events stay fast.
+- Announcements: `HeadingLevel` becomes "heading, level N" (the heading
+  element's role is overridden from generic "text"), and
+  `LocalizedLandmarkType` becomes "main landmark" style parts.
+  `speak_heading_levels` / `speak_landmarks` gate them independently.
+
 ## Focus description enrichment (src/focus_handler.py)
 
 `_add_extended_info` fetches accelerator key, password flag, position/size of

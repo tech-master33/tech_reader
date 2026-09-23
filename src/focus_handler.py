@@ -5,6 +5,7 @@ from comtypes import COMObject
 import comtypes.gen.UIAutomationClient as UIA
 import settings
 import uia_core
+import web_handler
 from qt_handler import (
     get_qt_label,
     get_qt_widget_description,
@@ -179,6 +180,12 @@ class FocusChangedHandler(COMObject):
 
             is_qt = _is_qt_element(element)
 
+            # Chromium pages keep their accessibility tree asleep until an
+            # AT performs the WM_GETOBJECT handshake -- do it on the first
+            # focus inside a web document (throttled; no-op afterwards).
+            if web_handler.is_web_element(element):
+                web_handler.wake_web_content(element)
+
             if is_qt:
                 # Qt workaround: containers may not expose focused child
                 if element_type in QT_CONTAINER_TYPES:
@@ -275,10 +282,23 @@ class FocusChangedHandler(COMObject):
                 if label_text:
                     parts.append(label_text)
 
-            # Determine role: prefer Qt widget desc, then UIA role map, then localized
+            # Web content (Chromium): heading level and landmark parts,
+            # plus a "heading" role override for heading elements.
+            web_role = None
+            web_parts = []
+            if web_handler.is_web_element(el):
+                try:
+                    web_role, web_parts = web_handler.get_web_parts(el)
+                except Exception:
+                    web_parts = []
+
+            # Determine role: prefer Qt widget desc, then web heading,
+            # then UIA role map, then localized
             if settings.speak_roles:
                 if qt_widget_desc:
                     parts.append(qt_widget_desc)
+                elif web_role:
+                    parts.append(web_role)
                 elif control_type_id not in SILENT_ROLES_ON_FOCUS:
                     role = UIA_ROLES.get(control_type_id, "")
                     localized_role = el.CurrentLocalizedControlType
@@ -286,6 +306,15 @@ class FocusChangedHandler(COMObject):
                         parts.append(role)
                     elif localized_role:
                         parts.append(localized_role)
+
+            # Web heading levels and landmarks, individually gated
+            if web_parts:
+                heading_parts = [p for p in web_parts if p.startswith("level ")]
+                landmark_parts = [p for p in web_parts if p not in heading_parts]
+                if settings.speak_heading_levels:
+                    parts.extend(heading_parts)
+                if settings.speak_landmarks:
+                    parts.extend(landmark_parts)
 
             # States — Qt-specific states first, then generic
             if settings.speak_states:

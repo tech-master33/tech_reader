@@ -162,6 +162,17 @@ TechReader picks it up automatically on the next start. Without the DLL the
 app falls back to the python-keyboard implementation unchanged. See
 [docs/native_keyboard.md](docs/native_keyboard.md) for the architecture.
 
+## Web page support (Chromium)
+
+Chromium browsers (Edge, Chrome) and every Electron/WebView2 app keep their
+accessibility tree asleep until an assistive technology performs the standard
+WM_GETOBJECT handshake on the renderer window. TechReader does this itself
+(`src/web_handler.py`) the moment focus enters a web document -- no browser
+settings, flags, or user interaction needed. Detection follows the same
+signals NVDA uses (UIA FrameworkId "Chrome", Chromium renderer window class).
+Web focus announcements add heading levels ("heading, level 2") and landmark
+regions ("main landmark"), each toggleable in Settings > Output.
+
 ## UIA core and event announcements
 
 All UI Automation goes through one shared object with 2s/20s connection/
