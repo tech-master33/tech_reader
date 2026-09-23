@@ -3,9 +3,13 @@
 All notable changes to TechReader are documented in this file.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.0] - unreleased
+## [unreleased]
 
-Development version — nothing here has been released yet.
+Nothing yet.
+
+## [0.2.0-alpha.1] - 2026-09-23
+
+First alpha of the 0.2 line, shipped as a portable zip pre-release.
 
 ### Added
 
@@ -64,5 +68,6 @@ First public release, shipped as a portable zip (`screenreader_portable.zip`).
   now a genuine menu control.
 - Silent event-handler failures that killed Qt combo-box announcements.
 
-[0.2.0]: https://github.com/tech-master33/tech_reader/compare/0.1.0...HEAD
+[unreleased]: https://github.com/tech-master33/tech_reader/compare/0.2.0-alpha.1...HEAD
+[0.2.0-alpha.1]: https://github.com/tech-master33/tech_reader/compare/0.1.0...0.2.0-alpha.1
 [0.1.0]: https://github.com/tech-master33/tech_reader/releases/tag/0.1.0
