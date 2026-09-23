@@ -133,7 +133,7 @@ Notes:
   `techreader_keyboard.dll` (into `_internal\native\`) plus `start.wav` /
   `exit.wav` automatically.
 - The exe carries Windows version info (`screenreader_version_info.txt` —
-  shows as "TechReader screen reader 0.1.0" in Explorer's Properties →
+  shows as "TechReader screen reader 0.2.0 (dev)" in Explorer's Properties →
   Details) and the TechReader icon (`src/icon.ico`). Bump both version
   numbers there when cutting a new release.
 - Regenerate the icon after editing `tools/make_icon.py` with:
