@@ -24,6 +24,13 @@ def _engine_key(engine_name):
     return "".join(c for c in engine_name.lower() if c.isalnum())
 
 
+# Queue sentinel: the worker purges the synthesizer as soon as it dequeues
+# this. Ctrl must never call driver.stop() from another thread: the engine's
+# COM object lives in the worker's STA apartment, and a cross-apartment call
+# would queue behind whatever the worker (or a wedged synthesizer) is doing.
+_STOP = object()
+
+
 class SpeechManager:
     def __init__(self):
         self.driver = None
@@ -146,14 +153,23 @@ class SpeechManager:
             text = self.text_queue.get()
             if text is None:
                 break
+            self.text_queue.task_done()
+            if text is _STOP:
+                # Ctrl pressed: purge the engine on the worker's own COM
+                # apartment, right now.
+                driver = self.driver
+                if driver is not None:
+                    try:
+                        driver.stop()
+                    except Exception:
+                        pass
+                continue
             if self._cancel_event.is_set():
                 self._cancel_event.clear()
-                self.text_queue.task_done()
                 continue
             if self.driver is not None:
                 self.driver.speak(text)
             self._notify_utterance(text)
-            self.text_queue.task_done()
 
     def wait_ready(self, timeout=10.0):
         """Wait until the worker has initialized COM and the engine."""
@@ -166,19 +182,24 @@ class SpeechManager:
         self.text_queue.put(text)
 
     def cancelSpeech(self):
+        """Stop speech and drop queued text (the Ctrl hotkey).
+
+        Runs on keyboard pump threads. The engine is never touched from
+        here: the queue is drained and a _STOP sentinel is enqueued so
+        the worker purges the synthesizer from its own COM apartment a
+        few milliseconds later. A frozen synthesizer can therefore never
+        stall the keyboard pump or any other thread.
+        """
         self._cancel_event.set()
-        driver = self.driver
-        if driver is not None:
-            try:
-                driver.stop()
-            except Exception:
-                pass
+        # Drop everything queued, then let the worker see the cancel flag
+        # before anything new is spoken.
         while not self.text_queue.empty():
             try:
                 self.text_queue.get_nowait()
                 self.text_queue.task_done()
             except queue.Empty:
                 break
+        self.text_queue.put(_STOP)
 
     def set_utterance_listener(self, callback):
         """Register a callback invoked (worker thread) after each utterance.

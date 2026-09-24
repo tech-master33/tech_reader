@@ -177,6 +177,9 @@ class AutomationEventHandler(COMObject):
 
     def HandleAutomationEvent(self, sender, event_id):
         try:
+            import menu_manager
+            if menu_manager._events_suppressed():
+                return  # popup open: no cross-process work in its modal loop
             element = sender.QueryInterface(UIA.IUIAutomationElement)
             text = self._announce(element)
             if text and _should_speak(text):
@@ -203,6 +206,9 @@ class NotificationEventHandler(COMObject):
                                 notification_processing, display_string,
                                 activity_id):
         try:
+            import menu_manager
+            if menu_manager._events_suppressed():
+                return  # popup open: no cross-process work in its modal loop
             text = (display_string or "").strip()
             if not text and activity_id:
                 text = str(activity_id).strip()

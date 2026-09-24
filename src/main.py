@@ -154,7 +154,7 @@ def main():
         while True:
             pythoncom.PumpWaitingMessages()
             menu_manager.process_wx_events()
-            time.sleep(0.01)
+            time.sleep(0.005)
     except KeyboardInterrupt:
         pass
     finally:

@@ -17,6 +17,10 @@ Quirks of the comtypes typelib generation this project was built against
   TypeError/ArgumentError. NEVER register events through the v6 pointer;
   use the v1 pointer (or v5 for notification handlers, whose bindings are
   correct there).
+* ``IUIAutomation2`` also exposes the connection/transaction timeout
+  properties through ``get_automation2()``. (This typelib build exposes no
+  Pause/Resume anywhere up to IUIAutomation6; menu-time event suspension is
+  done at the handler layer instead -- see menu_manager.)
 * Typed ``CachedPositionInSet``/``CachedSizeOfSet``/``CachedLevel`` members
   are missing from the generated ``IUIAutomationElement2``; the generic
   ``GetCachedPropertyValue``/``GetCurrentPropertyValue`` work fine and are
@@ -66,6 +70,11 @@ def _get():
 def get_automation():
     """The v1 IUIAutomation pointer: registrations and tree walking."""
     return _get()[0]
+
+
+def get_automation2():
+    """The IUIAutomation2 pointer (connection/transaction timeouts), or None."""
+    return _get()[1]
 
 
 def get_automation5():

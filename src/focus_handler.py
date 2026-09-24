@@ -169,6 +169,14 @@ class FocusChangedHandler(COMObject):
 
     def HandleFocusChangedEvent(self, sender):
         try:
+            # The TechReader popup menu dispatches these callbacks inside
+            # its own modal loop; while it is open, return before any
+            # cross-process property read so nothing can stall the menu
+            # (a menu stall freezes the machine, because the popup holds
+            # the system-wide input capture).
+            import menu_manager
+            if menu_manager._events_suppressed():
+                return
             element = sender.QueryInterface(UIA.IUIAutomationElement)
 
             try:
@@ -183,8 +191,13 @@ class FocusChangedHandler(COMObject):
             # Chromium pages keep their accessibility tree asleep until an
             # AT performs the WM_GETOBJECT handshake -- do it on the first
             # focus inside a web document (throttled; no-op afterwards).
+            # Skipped while the TechReader menu is open: the handshake
+            # crosses into another process and must not run inside the
+            # menu's modal loop.
             if web_handler.is_web_element(element):
-                web_handler.wake_web_content(element)
+                import menu_manager
+                if not menu_manager._events_suppressed():
+                    web_handler.wake_web_content(element)
 
             if is_qt:
                 # Qt workaround: containers may not expose focused child

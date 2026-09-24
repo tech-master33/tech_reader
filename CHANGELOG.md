@@ -5,7 +5,24 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [unreleased]
 
-Nothing yet.
+### Fixed
+
+- On some machines the whole computer could freeze right after the
+  "TechReader menu" announcement. The cause: UI Automation delivers its
+  events as window messages, and the popup menu's own message loop
+  dispatched them -- so focus/menu/window event handlers with
+  cross-process COM property reads ran inside the menu loop while the
+  menu held the system-wide input capture. One slow or hung application
+  (elevated apps, remote sessions, wedged Chromium renderers) stalled
+  everything. TechReader now suspends all its UIA event handlers for
+  the popup's lifetime and resumes them on close, so no cross-process
+  work can run inside the menu loop. The Chromium WM_GETOBJECT web wake
+  is also strictly bounded now: hung windows are skipped, only visible
+  renderer windows are poked, and every poke carries a short timeout.
+- Ctrl (speech interrupt) no longer touches the synthesizer from the
+  keyboard thread: the purge now happens on the speech worker's own COM
+  apartment via an internal stop sentinel, so a stuck synthesizer can
+  never stall the keyboard pump or the reader.
 
 ## [0.2.0-alpha.2] - 2026-09-23
 

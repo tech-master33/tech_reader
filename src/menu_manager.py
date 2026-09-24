@@ -193,6 +193,12 @@ def show_menu():
     thread blocked, looking like a TechReader freeze. The menu is now
     only opened when the owner really is foreground; otherwise the user
     hears "Cannot open menu now" instead of being trapped.
+
+    Freeze safety 2: while the popup is open, all UIA event handlers are
+    suspended (they run inside the menu's modal loop, and their
+    cross-process property reads can stall the menu loop while it holds
+    the system-wide input capture, freezing everything). See
+    _suspend_uia_handlers for details.
     """
     global _menu, _last_closed_at, _in_show_menu, _owner_shown
     if _owner_frame is None:
@@ -216,6 +222,11 @@ def show_menu():
     print("Menu: opening")
     sys.stdout.flush()
     _speak("TechReader menu")
+    # Cross-process UIA handlers must not run inside the popup's modal
+    # loop: suspend them for the popup's lifetime.
+    _suspend_uia_handlers()
+    print("Menu: building")
+    sys.stdout.flush()
     builder = _MenuBuilder()
     menu = builder.build()
     _menu = menu
@@ -226,6 +237,8 @@ def show_menu():
     highlight = builder._on_highlight
     _owner_frame.Bind(wx.EVT_MENU_HIGHLIGHT, highlight)
     _in_show_menu = True
+    print("Menu: popup up")
+    sys.stdout.flush()
     try:
         try:
             _owner_frame.PopupMenu(menu, (0, 0))
@@ -253,6 +266,8 @@ def show_menu():
                 menu.Destroy()
             except Exception:
                 pass
+        # Restore UIA event delivery whatever way the popup ends.
+        _resume_uia_handlers()
     # PopupMenu blocks until the menu is dismissed.
     print("Menu: closed")
     sys.stdout.flush()
@@ -344,6 +359,61 @@ def hide_menu():
         sim.Char(wx.WXK_ESCAPE)
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# UIA handler suspension (menu-freeze protection)
+# ---------------------------------------------------------------------------
+
+# UIA delivers every registered event (focus changes, property changes,
+# menu/window/tooltip events) as window messages to this STA thread. The
+# popup menu's modal loop dispatches messages too, so while the menu is
+# open every UIA handler runs inside it -- and handlers make cross-process
+# COM property reads. If any provider is slow or hung (elevated app,
+# remote session, a wedged renderer), those reads stall the menu loop
+# while the popup holds the system-wide input capture: the user sees the
+# whole machine freeze right after "TechReader menu".
+#
+# This comtypes build's IUIAutomation interfaces do not expose the
+# Pause/Resume API, so suspension is done at the handler layer instead:
+# every COM handler entry point checks _events_suppressed() first and
+# returns before touching the event's sender element. No cross-process
+# call can then happen inside the modal loop. Events raised while the
+# menu is open are dropped, not queued.
+
+_uia_suspended = False
+
+
+def _suspend_uia_handlers():
+    """Suspend all UIA event handlers for the popup's lifetime."""
+    global _uia_suspended
+    if _uia_suspended:
+        return
+    _uia_suspended = True
+    print("Menu: UIA handlers suspended")
+    sys.stdout.flush()
+
+
+def _resume_uia_handlers():
+    """Resume UIA event handlers after the menu closes."""
+    global _uia_suspended
+    if not _uia_suspended:
+        return
+    _uia_suspended = False
+    print("Menu: UIA handlers resumed")
+    sys.stdout.flush()
+
+
+def _events_suppressed():
+    """True while the TechReader menu is open (or opening).
+
+    COM event handlers must return immediately when this is True: their
+    callbacks execute inside the menu's modal loop, and any cross-process
+    work there can stall the menu while it holds the system-wide input
+    capture (see above). Also used by the web waker to skip the
+    WM_GETOBJECT handshake while the menu shows.
+    """
+    return _menu is not None or _in_show_menu or _uia_suspended
 
 
 def process_wx_events():
